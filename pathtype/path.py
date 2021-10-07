@@ -31,20 +31,32 @@ class Path:
     Validations
     **********
 
-    A variety of validations are available to validate the path or the file
-    (or directory) being referenced during argument parsing. You can also add
-    your own validations.
+    A variety of predefined validations are available to validate the path or
+    the file (or directory) being referenced during argument parsing. Note that
+    you can also add your own validations (see below).
 
-    The following parameters trigger specific validations and generate
-    meaningful error messages when validation fails:
+    The following parameters trigger predefined validations and generate
+    meaningful error messages when validation fails. If the path points to a
+    symbolic link, all validations are run on the linked file, not the link
+    itself.
 
     ``exists`` (boolean, default: `False`)
         If ``True``, validates that the path points to an existing file or
         directory. If it exists, but the user doesn't have the required
         permissions to validate its existence (the user doesn't have
         execution permission on the parent directory, for example), the file
-        is considered as not existing. If the path is a symbolic link,
-        the validation is run on the linked file, not on the link itself.
+        is considered as not existing. Note that some other predefined
+        validations imply ``exists`` (ex: ``readable``). In those cases,
+        you don't need to specify it.
+    ``readable`` (boolean, default: `False`)
+        If True, validates that the user has "read" access on the file or
+        directory pointed by the path. Implies ``exists``.
+    ``writable`` (boolean, default: `False`)
+        If True, validates that the user has "write" access on the file or
+        directory pointed by the path. Implies ``exists``.
+    ``executable`` (boolean, default: `False`)
+        If True, validates that the user has "execute" access on the file or
+        directory pointed by the path. Implies ``exists``.
 
     **Example**:
 
@@ -54,7 +66,7 @@ class Path:
     >>> parser = argparse.ArgumentParser()
     >>> parser.add_argument(
     >>>     "--path",
-    >>>     type=pathtype.Path(exists=True)
+    >>>     type=pathtype.Path(readable=True, writable=True)
     >>> )
 
     Custom validations
@@ -107,9 +119,12 @@ class Path:
        :header: "Parameter", "Validation class"
 
        "``exists``", "``PathExists``"
+       "``readable``", "``UserReadable``"
+       "``writable``", "``UserWritable``"
+       "``executable``", "``UserExecutable``"
 
     For example, if you want to first validate the directory name
-    before validating that the file exists, you could do it like this:
+    before validating that user has "write" access, you could do it like this:
 
     >>> import pathtype
     >>> import pathtype.validation as validation
@@ -119,7 +134,7 @@ class Path:
     >>>     if path.name != "my_dir":
     >>>         raise argparse.ArgumentTypeError(f"invalid directory name ({path.name})")
     >>>
-    >>> validators = [validate_directory_name, validation.PathExists()]
+    >>> validators = [validate_directory_name, validation.UserWritable()]
     >>>
     >>> parser = argparse.ArgumentParser()
     >>> # We don't use the `exists=True` parameter
@@ -127,16 +142,34 @@ class Path:
 
     :param validator: Callable, or iterable of callables, that validate the
         Path and raise an exception if validation fails.
-    :param exists: If True, run the validation.PathExists validation
+    :param exists: If True, add validation.PathExists to the list of validations
+    :param readable: If True, add validation.Readable to the list of validations
+    :param writable: If True, add validation.Writable to the list of validations
+    :param executable: If True, add validation.Executable to the list of
+        validations
     """
 
     def __init__(self, *, validator: Optional[_Validations] = None,
-                 exists=False):
+                 exists=False, readable=False, writable=False,
+                 executable=False):
         validations = []
+
+        # If `readable`, `writable` or `executable` is set, we automatically set
+        # `exists`
+        if writable or readable or executable:
+            exists = True
 
         # The "exists" validation
         if exists:
             validations.append(val.PathExists())
+
+        # The `readable`, `writable` and `executable` validations
+        if readable:
+            validations.append(val.UserReadable())
+        if writable:
+            validations.append(val.UserWritable())
+        if executable:
+            validations.append(val.UserExecutable())
 
         # Any custom validation
         if validator is not None:
