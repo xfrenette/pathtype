@@ -53,7 +53,7 @@ class TestPathValidationParameters(unittest.TestCase):
         """
         other_validation = _mock_validation()
         ptype = pathtype.Path(validator=other_validation, exists=True)
-        self.assertIsInstance(ptype.validations[0], validation.PathExists)
+        self.assertIsInstance(ptype.validations[0], validation.Exists)
         self.assertEqual(ptype.validations[1], other_validation)
         self.assertEqual(2, len(ptype.validations))
 
@@ -64,7 +64,7 @@ class TestPathValidationParameters(unittest.TestCase):
         """
         other_validation = _mock_validation()
         ptype = pathtype.Path(validator=other_validation, readable=True)
-        self.assertIsInstance(ptype.validations[0], validation.PathExists)
+        self.assertIsInstance(ptype.validations[0], validation.Exists)
         self.assertIsInstance(ptype.validations[1], validation.UserReadable)
         self.assertEqual(ptype.validations[2], other_validation)
         self.assertEqual(3, len(ptype.validations))
@@ -76,7 +76,7 @@ class TestPathValidationParameters(unittest.TestCase):
         """
         other_validation = _mock_validation()
         ptype = pathtype.Path(validator=other_validation, writable=True)
-        self.assertIsInstance(ptype.validations[0], validation.PathExists)
+        self.assertIsInstance(ptype.validations[0], validation.Exists)
         self.assertIsInstance(ptype.validations[1], validation.UserWritable)
         self.assertEqual(ptype.validations[2], other_validation)
         self.assertEqual(3, len(ptype.validations))
@@ -88,7 +88,7 @@ class TestPathValidationParameters(unittest.TestCase):
         """
         other_validation = _mock_validation()
         ptype = pathtype.Path(validator=other_validation, executable=True)
-        self.assertIsInstance(ptype.validations[0], validation.PathExists)
+        self.assertIsInstance(ptype.validations[0], validation.Exists)
         self.assertIsInstance(ptype.validations[1], validation.UserExecutable)
         self.assertEqual(ptype.validations[2], other_validation)
         self.assertEqual(3, len(ptype.validations))

@@ -118,7 +118,7 @@ class Path:
     .. csv-table::
        :header: "Parameter", "Validation class"
 
-       "``exists``", "``PathExists``"
+       "``exists``", "``Exists``"
        "``readable``", "``UserReadable``"
        "``writable``", "``UserWritable``"
        "``executable``", "``UserExecutable``"
@@ -142,7 +142,7 @@ class Path:
 
     :param validator: Callable, or iterable of callables, that validate the
         Path and raise an exception if validation fails.
-    :param exists: If True, add validation.PathExists to the list of validations
+    :param exists: If True, add validation.Exists to the list of validations
     :param readable: If True, add validation.Readable to the list of validations
     :param writable: If True, add validation.Writable to the list of validations
     :param executable: If True, add validation.Executable to the list of
@@ -161,7 +161,7 @@ class Path:
 
         # The "exists" validation
         if exists:
-            validations.append(val.PathExists())
+            validations.append(val.Exists())
 
         # The `readable`, `writable` and `executable` validations
         if readable:

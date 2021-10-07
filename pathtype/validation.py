@@ -3,7 +3,7 @@ import os
 import pathlib
 
 
-class PathExists:
+class Exists:
     """
     Validator that checks that the path points to an existing object.
 
@@ -53,7 +53,7 @@ class UserReadable:
     access on the parent directory), the result is undefined and is platform
     dependent. It could raise a `FileNotFoundError`` error, or it could
     simply consider the file as not readable. So generally, you would run
-    this validator after ``PathExists``.
+    this validator after ``Exists``.
     """
 
     def __call__(self, path: pathlib.Path, arg: str):
@@ -87,7 +87,7 @@ class UserWritable:
     access on the parent directory), the result is undefined and is platform
     dependent. It could raise a `FileNotFoundError`` error, or it could
     simply consider the file as not writable. So generally, you would run
-    this validator after ``PathExists``.
+    this validator after ``Exists``.
     """
 
     def __call__(self, path: pathlib.Path, arg: str):
@@ -121,7 +121,7 @@ class UserExecutable:
     access on the parent directory), the result is undefined and is platform
     dependent. It could raise a `FileNotFoundError`` error, or it could
     simply consider the file as not executable. So generally, you would run
-    this validator after ``PathExists``.
+    this validator after ``Exists``.
     """
 
     def __call__(self, path: pathlib.Path, arg: str):

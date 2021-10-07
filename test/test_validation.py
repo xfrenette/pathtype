@@ -100,7 +100,7 @@ class _AccessTestCase(unittest.TestCase):
 
 class TestPathExists(unittest.TestCase):
     def test_does_nothing_if_exists(self):
-        validator = validation.PathExists()
+        validator = validation.Exists()
 
         with tempfile.TemporaryDirectory() as tmp_dir_name:
             # Should NOT raise with existent path
@@ -109,7 +109,7 @@ class TestPathExists(unittest.TestCase):
             validator(path, arg)
 
     def test_raises_if_doesnt_exist(self):
-        validator = validation.PathExists()
+        validator = validation.Exists()
 
         with tempfile.TemporaryDirectory() as tmp_dir_name:
             # Should raise with non-existent path
@@ -119,7 +119,7 @@ class TestPathExists(unittest.TestCase):
                 validator(path, arg)
 
     def test_raises_if_not_enough_permissions(self):
-        validator = validation.PathExists()
+        validator = validation.Exists()
 
         with tempfile.TemporaryDirectory() as tmp_dir_name:
             # We create a directory and a file within it.
@@ -142,7 +142,7 @@ class TestPathExists(unittest.TestCase):
                 inside_dir.chmod(0o766)
 
     def test_symlink_to_nonexistent(self):
-        validator = validation.PathExists()
+        validator = validation.Exists()
 
         with tempfile.TemporaryDirectory() as tmp_dir_name:
             tmp_dir_path = pathlib.Path(tmp_dir_name)
@@ -153,7 +153,7 @@ class TestPathExists(unittest.TestCase):
                 validator(symlink, str(symlink.absolute()))
 
     def test_symlink_to_existent(self):
-        validator = validation.PathExists()
+        validator = validation.Exists()
 
         with tempfile.TemporaryDirectory() as tmp_dir_name:
             tmp_dir_path = pathlib.Path(tmp_dir_name)
@@ -167,7 +167,7 @@ class TestPathExists(unittest.TestCase):
 
     def test_inside_argparse(self):
         parser = argparse.ArgumentParser()
-        validator = validation.PathExists()
+        validator = validation.Exists()
         parser.add_argument("--path", type=pathtype.Path(validator=validator))
 
         with tempfile.TemporaryDirectory() as tmp_dir_name:
