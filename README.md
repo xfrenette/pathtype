@@ -1,6 +1,9 @@
 pathtype: convert client arguments to Path instances
 ===
 
+| :warning: Under active development. Not yet ready! |
+|:---------------------------------------------------|
+
 The *pathtype* Python package makes it easy to convert command line path 
 arguments to [`pathlib.Path`](https://docs.python.org/3/library/pathlib.html) 
 instances. It also provides multiple validations to easily and 
