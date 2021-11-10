@@ -48,7 +48,7 @@ class TestPathValidationParameters(unittest.TestCase):
 
     def test_exists(self):
         """
-        Test that the "exist" validation is added to validations, and before
+        Test that the "exists" validation is added to validations, and before
         custom validations
         """
         other_validation = _mock_validation()
@@ -56,6 +56,32 @@ class TestPathValidationParameters(unittest.TestCase):
         self.assertIsInstance(ptype.validations[0], validation.Exists)
         self.assertEqual(ptype.validations[1], other_validation)
         self.assertEqual(2, len(ptype.validations))
+
+    def test_not_exists(self):
+        """
+        Test that the "not_exists" validation is added to validations, and
+        before custom validations
+        """
+        other_validation = _mock_validation()
+        ptype = pathtype.Path(validator=other_validation, not_exists=True)
+        self.assertIsInstance(ptype.validations[0], validation.NotExists)
+        self.assertEqual(ptype.validations[1], other_validation)
+        self.assertEqual(2, len(ptype.validations))
+
+    def test_exists_and_not_exists(self):
+        """
+        Test that an error is raised when both `exists` and `not_exists` are
+        used at the same time.
+        """
+        with self.assertRaises(ValueError):
+            pathtype.Path(exists=True, not_exists=True)
+
+        # `exists` is also implied by other validations, so `not_exists` cannot
+        # be used with them.
+        for other_validation in ("writable", "readable", "executable"):
+            pathtype_args = {other_validation: True, "not_exists": True}
+            with self.assertRaises(ValueError):
+                pathtype.Path(**pathtype_args)
 
     def test_readable(self):
         """

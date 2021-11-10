@@ -98,7 +98,7 @@ class _AccessTestCase(unittest.TestCase):
                 fail_file.chmod(0o766)
 
 
-class TestPathExists(unittest.TestCase):
+class TestExists(unittest.TestCase):
     def test_does_nothing_if_exists(self):
         validator = validation.Exists()
 
@@ -134,8 +134,7 @@ class TestPathExists(unittest.TestCase):
 
             try:
                 # It would then not be possible to know if the file
-                # exists. In that case, it should be considered that the file
-                # doesn't exist
+                # exists. In that case, it should raise an error.
                 with self.assertRaises(argparse.ArgumentTypeError):
                     validator(inside_file, str(inside_file.absolute()))
             finally:
@@ -179,7 +178,99 @@ class TestPathExists(unittest.TestCase):
             # argparse doesn't raise an exception when validation fails, instead
             # it exits the program
             with self.assertRaises(SystemExit):
+                # The following line will output to STDERR something like
+                # "usage: [...] error: argument --path: path exists". It's
+                # all good.
                 parser.parse_args(["--path", f"{tmp_dir_name}/non-existent"])
+
+
+class TestNotExists(unittest.TestCase):
+    def test_does_nothing_if_doesnt_exist(self):
+        validator = validation.NotExists()
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            # Should NOT raise with non-existent path
+            arg = f"{tmp_dir_name}/non-existent.txt"
+            path = pathlib.Path(arg)
+            validator(path, arg)
+
+    def test_raises_if_exists(self):
+        validator = validation.NotExists()
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            # Should raise with existing path
+            arg = tmp_dir_name
+            path = pathlib.Path(arg)
+            with self.assertRaises(argparse.ArgumentTypeError):
+                validator(path, arg)
+
+    def test_raises_if_not_enough_permissions(self):
+        validator = validation.NotExists()
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            # We create a directory and a file within it.
+            inside_dir = pathlib.Path(f"{tmp_dir_name}/dir")
+            inside_dir.mkdir()
+            inside_file = inside_dir / "non-existent.txt"
+
+            # But we change the permissions so that the user cannot list the
+            # directory.
+            inside_dir.chmod(0o200)
+
+            try:
+                # It would then not be possible to know if the file
+                # exists or not. In that case, it should raise an error
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    validator(inside_file, str(inside_file.absolute()))
+            finally:
+                inside_dir.chmod(0o766)
+
+    def test_symlink_to_nonexistent(self):
+        # Should NOT raise exception if a symlink exists at the path, but it
+        # points to a non-existent file
+        validator = validation.NotExists()
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            tmp_dir_path = pathlib.Path(tmp_dir_name)
+            symlink = tmp_dir_path / "link"
+            symlink.symlink_to(tmp_dir_path / "nonexistent.txt")
+
+            # Should not raise any exception
+            validator(symlink, str(symlink.absolute()))
+
+    def test_symlink_to_existent(self):
+        # Should raise exception if a symlink exists at the path, but it
+        # points to an existing file
+        validator = validation.NotExists()
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            tmp_dir_path = pathlib.Path(tmp_dir_name)
+            file_path = tmp_dir_path / "file.txt"
+            file_path.touch()
+            symlink = tmp_dir_path / "link"
+            symlink.symlink_to(file_path)
+
+            with self.assertRaises(argparse.ArgumentTypeError):
+                validator(symlink, str(symlink.absolute()))
+
+    def test_inside_argparse(self):
+        parser = argparse.ArgumentParser()
+        validator = validation.NotExists()
+        parser.add_argument("--path", type=pathtype.Path(validator=validator))
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            # When the path doesn't exist, we should then have it in the args
+            expected_path = pathlib.Path(f"{tmp_dir_name}/non-existent")
+            args = parser.parse_args(["--path", str(expected_path)])
+            self.assertEqual(expected_path, args.path)
+
+            # argparse doesn't raise an exception when validation fails, instead
+            # it exits the program
+            with self.assertRaises(SystemExit):
+                # The following line will output to STDERR something like
+                # "usage: [...] error: argument --path: path exists". It's
+                # all good.
+                parser.parse_args(["--path", tmp_dir_name])
 
 
 class TestReadable(_AccessTestCase):

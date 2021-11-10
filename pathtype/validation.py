@@ -10,9 +10,9 @@ class Exists:
     If the path doesn't point to an existing file or directory,
     an ``argparse.ArgumentTypeError`` error is raised.
 
-    If the user doesn't have the permissions to check if the path points to
-    an existing file (for example, if the user doesn't have "execute"
-    permission on the parent directory), the file is considered as not existing.
+    If the user doesn't have the permissions to check the existence of the path
+    (for example, if the user doesn't have the "execute" permission on the
+    parent directory), an error is raised.
 
     If the path points to a symbolic link, the existence is checked on the
     linked file, not on the link itself.
@@ -27,8 +27,36 @@ class Exists:
             if not path.exists():
                 raise argparse.ArgumentTypeError(f"path doesn't exist: {arg}")
         except PermissionError:
-            raise argparse.ArgumentTypeError(f"not enough permissions to "
-                                             f"access to path: {arg}")
+            raise argparse.ArgumentTypeError(
+                f"not enough permissions to validate existence of path: {arg}")
+
+
+class NotExists:
+    """
+    Validator that checks that the path points to a non-existent object.
+
+    If the path points to an existing file or directory, an
+    ``argparse.ArgumentTypeError`` error is raised.
+
+    If the user doesn't have the permissions to check the existence of the path
+    (for example, if the user doesn't have the "execute" permission on the
+    parent directory), an error is raised.
+
+    If the path points to a symbolic link, the existence is checked on the
+    linked file, not on the link itself.
+    """
+
+    def __call__(self, path: pathlib.Path, arg: str):
+        """
+        :param path: Path to validate
+        :param arg: Raw string value of the argument
+        """
+        try:
+            if path.exists():
+                raise argparse.ArgumentTypeError(f"path exists: {arg}")
+        except PermissionError:
+            raise argparse.ArgumentTypeError(
+                f"not enough permissions to validate existence of path: {arg}")
 
 
 class UserReadable:

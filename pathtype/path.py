@@ -10,7 +10,7 @@ _Validations = Union[_ValidationCallable, Iterable[_ValidationCallable]]
 
 class Path:
     """
-    `argparse` type that parses an argument as a Path and validates it.
+    `argparse` type that parses an argument as a `Path` and validates it.
 
     Use an instance of this class as the ``type`` parameter in a
     ``argparse.ArgumentParser`` argument to convert a string argument to an
@@ -27,9 +27,8 @@ class Path:
     >>> parser = argparse.ArgumentParser()
     >>> parser.add_argument("--path", type=pathtype.Path())
 
-    **********
     Validations
-    **********
+    ============
 
     A variety of predefined validations are available to validate the path or
     the file (or directory) being referenced during argument parsing. Note that
@@ -42,20 +41,30 @@ class Path:
 
     ``exists`` (boolean, default: `False`)
         If ``True``, validates that the path points to an existing file or
-        directory. If it exists, but the user doesn't have the required
-        permissions to validate its existence (the user doesn't have
-        execution permission on the parent directory, for example), the file
-        is considered as not existing. Note that some other predefined
-        validations imply ``exists`` (ex: ``readable``). In those cases,
-        you don't need to specify it.
+        directory. If the user doesn't have the required permissions to validate
+        its existence (e.g. the user doesn't have the "execute" permission on
+        the parent directory), an error is raised. Note that some other
+        predefined validations imply ``exists`` (ex: ``readable``). In those
+        cases, you don't need to specify it.
+
+    ``not_exists`` (boolean, default: `False`)
+        If ``True``, validates that the path points to a non-existing file or
+        directory. If the user doesn't have the required permissions to validate
+        its existence (e.g. the user doesn't have the "execute" permission on
+        the parent directory), an error is raised. You cannot have both
+        `not_exists` and `exists` set to True (or any other validation that
+        imply `exists=True`). An error is raised in that case.
+
     ``readable`` (boolean, default: `False`)
-        If True, validates that the user has "read" access on the file or
+        If ``True``, validates that the user has "read" access on the file or
         directory pointed by the path. Implies ``exists``.
+
     ``writable`` (boolean, default: `False`)
-        If True, validates that the user has "write" access on the file or
+        If ``True``, validates that the user has "write" access on the file or
         directory pointed by the path. Implies ``exists``.
+
     ``executable`` (boolean, default: `False`)
-        If True, validates that the user has "execute" access on the file or
+        If ``True``, validates that the user has "execute" access on the file or
         directory pointed by the path. Implies ``exists``.
 
     **Example**:
@@ -70,7 +79,7 @@ class Path:
     >>> )
 
     Custom validations
-    ----------
+    ------------------
 
     You can also provide custom validation by passing to the ``validator``
     parameter a "validator" (a function or a callback), or an iterable of
@@ -119,6 +128,7 @@ class Path:
        :header: "Parameter", "Validation class"
 
        "``exists``", "``Exists``"
+       "``not_exists``", "``NotExists``"
        "``readable``", "``UserReadable``"
        "``writable``", "``UserWritable``"
        "``executable``", "``UserExecutable``"
@@ -142,15 +152,19 @@ class Path:
 
     :param validator: Callable, or iterable of callables, that validate the
         Path and raise an exception if validation fails.
-    :param exists: If True, add validation.Exists to the list of validations
-    :param readable: If True, add validation.Readable to the list of validations
-    :param writable: If True, add validation.Writable to the list of validations
-    :param executable: If True, add validation.Executable to the list of
-        validations
+    :param exists: If True, validate that the path points to an existing file
+    :param not_exists: If True, validate that the path doesn't point to an
+        existing file
+    :param readable: If True, validate that the user has "read" permission on
+        the pointed file. Implies `exists=True`.
+    :param writable: If True, validate that the user has "write" permission on
+        the pointed file. Implies `exists=True`.
+    :param executable: If True, validate that the user has "execute" permission
+        on the pointed file. Implies `exists=True`.
     """
 
     def __init__(self, *, validator: Optional[_Validations] = None,
-                 exists=False, readable=False, writable=False,
+                 exists=False, not_exists=False, readable=False, writable=False,
                  executable=False):
         validations = []
 
@@ -159,9 +173,17 @@ class Path:
         if writable or readable or executable:
             exists = True
 
-        # The "exists" validation
+        # Both `exists` and `not_exists` cannot be True at the same time
+        if exists and not_exists:
+            raise ValueError("cannot have both exists and not_exists True")
+
+        # The `exists` validation
         if exists:
             validations.append(val.Exists())
+
+        # The `not_exists` validation
+        if not_exists:
+            validations.append(val.NotExists())
 
         # The `readable`, `writable` and `executable` validations
         if readable:
