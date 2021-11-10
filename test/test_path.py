@@ -8,6 +8,7 @@ import pathtype
 import pathtype.validation as validation
 
 _ValidationCallable = Callable[[pathlib.Path, str], None]
+_imply_exists = ("exists", "writable", "readable", "executable")
 
 
 def _mock_validation(*args, **kwargs) -> Union[Mock, _ValidationCallable]:
@@ -73,12 +74,7 @@ class TestPathValidationParameters(unittest.TestCase):
         Test that an error is raised when both `exists` and `not_exists` are
         used at the same time.
         """
-        with self.assertRaises(ValueError):
-            pathtype.Path(exists=True, not_exists=True)
-
-        # `exists` is also implied by other validations, so `not_exists` cannot
-        # be used with them.
-        for other_validation in ("writable", "readable", "executable"):
+        for other_validation in _imply_exists:
             pathtype_args = {other_validation: True, "not_exists": True}
             with self.assertRaises(ValueError):
                 pathtype.Path(**pathtype_args)
@@ -118,6 +114,29 @@ class TestPathValidationParameters(unittest.TestCase):
         self.assertIsInstance(ptype.validations[1], validation.UserExecutable)
         self.assertEqual(ptype.validations[2], other_validation)
         self.assertEqual(3, len(ptype.validations))
+
+    def test_parent_exists(self):
+        """
+        Test that the "parent_exists" validation is added to validations, and
+        before custom validations
+        """
+        other_validation = _mock_validation()
+        ptype = pathtype.Path(validator=other_validation, parent_exists=True)
+        self.assertIsInstance(ptype.validations[0], validation.ParentExists)
+        self.assertEqual(ptype.validations[1], other_validation)
+        self.assertEqual(2, len(ptype.validations))
+
+    def test_parent_exists_ignored_with_exists(self):
+        """
+        Test that the "parent_exists" is ignored if used with "exists" or other
+        validations that imply "exists
+        """
+        for other_validation in _imply_exists:
+            pathtype_args = {other_validation: True, "parent_exists": True}
+            ptype = pathtype.Path(**pathtype_args)
+            for ptype_validation in ptype.validations:
+                self.assertNotIsInstance(ptype_validation,
+                                         validation.ParentExists)
 
 
 class TestPathValidations(unittest.TestCase):

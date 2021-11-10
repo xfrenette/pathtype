@@ -159,3 +159,50 @@ class UserExecutable:
         """
         if not os.access(path, os.X_OK):
             raise argparse.ArgumentTypeError(f"path is not executable: {arg}")
+
+
+class ParentExists:
+    """
+    Validator that checks that the direct parent directory of the path exists.
+
+    If the parent directory of the path doesn't exist, of if the path has no
+    parent (e.g. the root directory has no parent),
+    an ``argparse.ArgumentTypeError`` error is raised.
+
+    If the user doesn't have the permissions to check the existence of the
+    parent (for example, if the user doesn't have the "execute" permission on
+    the parent directory's parent), an error is raised.
+
+    To determine the parent, this class first resolves any symbolic link and
+    up-level references (ex: ../). It then checks the existence of the resulting
+    path's parent directory. So the parent that is checked is:
+
+        >>> path: pathlib.Path = # ...
+        >>> parent = path.resolve().parent
+
+    In particular, this means that if the path points to a symbolic link,
+    the parent will be the directory containing the linked file, not the
+    directory containing the symbolic link itself. Also, any symbolic link in
+    the parent's path will be resolved.
+    """
+
+    def __call__(self, path: pathlib.Path, arg: str):
+        """
+        :param path: Path whose parent we want to validate
+        :param arg: Raw string value of the argument
+        """
+        resolved = path.resolve()
+        parent = resolved.parent
+
+        if parent == resolved:
+            raise argparse.ArgumentTypeError(
+                f"path doesn't have a parent directory: {arg}")
+
+        try:
+            if not parent.exists():
+                raise argparse.ArgumentTypeError(
+                    f"parent directory doesn't exist for path: {arg}")
+        except PermissionError:
+            raise argparse.ArgumentTypeError(
+                f"not enough permissions to validate existence of parent of"
+                f" path: {arg}")

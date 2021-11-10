@@ -1,5 +1,6 @@
 import argparse
 import itertools
+import os
 import pathlib
 import tempfile
 import unittest
@@ -215,7 +216,7 @@ class TestNotExists(unittest.TestCase):
 
             # But we change the permissions so that the user cannot list the
             # directory.
-            inside_dir.chmod(0o200)
+            inside_dir.chmod(0o600)
 
             try:
                 # It would then not be possible to know if the file
@@ -343,3 +344,152 @@ class TestExecutable(_AccessTestCase):
     def test_inside_argparse(self):
         validator = validation.UserExecutable()
         self.assert_works_in_argparse(validator, 0o300, 0o200)
+
+
+class TestParentExists(unittest.TestCase):
+    def test_doesnt_raise_if_parent_exists(self):
+        validator = validation.ParentExists()
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            path1 = pathlib.Path(tmp_dir_name) / "existing.txt"
+            path2 = pathlib.Path(tmp_dir_name) / "not-existing"
+            path1.touch()
+
+            # Should NOT raise with existing parent
+            validator(path1, str(path1))
+            validator(path2, str(path2))
+
+    def test_raise_if_parent_doesnt_exist(self):
+        validator = validation.ParentExists()
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            path = pathlib.Path(tmp_dir_name) / "inexistant/my_file.txt"
+
+            # Should raise with non-existent parent
+            with self.assertRaises(argparse.ArgumentTypeError):
+                validator(path, str(path))
+
+    def test_raises_if_not_enough_permissions(self):
+        validator = validation.ParentExists()
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            # We create a directory with another directory within it.
+            main_dir = pathlib.Path(f"{tmp_dir_name}/dir")
+            main_dir.mkdir()
+            sub_dir = main_dir / "sub-dir"
+            test_file = sub_dir / "my-file.txt"
+
+            # But we change the permissions so that the user cannot list the
+            # directory
+            main_dir.chmod(0o600)
+
+            try:
+                # It would then not be possible to check the existence of the
+                # test file's parent directory
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    validator(test_file, str(test_file))
+            finally:
+                main_dir.chmod(0o766)
+
+    def test_symlink_in_parents(self):
+        """
+        Test that symbolic links in the path are resolved when determining the
+        parent
+        """
+        validator = validation.ParentExists()
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            # Original directory containing the file.
+            orig_dir = pathlib.Path(tmp_dir_name) / "unreadable/orig"
+            # Symbolic link to orig dir
+            sym_dir = pathlib.Path(tmp_dir_name) / "sym_to_orig"
+            test_file = pathlib.Path("my_file.txt")
+
+            orig_dir.mkdir(parents=True)
+            sym_dir.symlink_to(orig_dir)
+
+            os.chdir(sym_dir)
+
+            # Should not raise any error if parent can be checked
+            validator(test_file, str(test_file))
+
+            # We change the permissions of the parent of the orig_dir so we
+            # can't determine if it exists
+            orig_dir.parent.chmod(0o600)
+
+            try:
+                # It would then not be possible to check the existence of the
+                # test file's parent directory
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    validator(test_file, str(test_file))
+            finally:
+                orig_dir.parent.chmod(0o766)
+
+    def test_path_is_symlink(self):
+        """
+        Test that symbolic links in the path are resolved when determining the
+        parent
+        """
+        validator = validation.ParentExists()
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            # Original directory containing the file.
+            orig_dir = pathlib.Path(tmp_dir_name) / "unreadable/orig"
+            orig_file = orig_dir / "my_file.txt"
+            # Symbolic link to orig file
+            sym_file = pathlib.Path(tmp_dir_name) / "sym_to_my_file.txt"
+            test_file = pathlib.Path(sym_file.name)
+
+            orig_dir.mkdir(parents=True)
+            orig_file.touch()
+            sym_file.symlink_to(orig_file)
+
+            os.chdir(tmp_dir_name)
+
+            # Should not raise any error if parent can be checked
+            validator(test_file, str(test_file))
+
+            # We change the permissions of the parent of the orig_file parent
+            # directory's parent so we can't determine if the parent of
+            # orig_file exists
+            orig_dir.parent.chmod(0o600)
+
+            try:
+                # It would then not be possible to check the existence of the
+                # test file's parent directory
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    validator(test_file, str(test_file))
+            finally:
+                orig_dir.parent.chmod(0o766)
+
+    def test_raises_if_no_parent(self):
+        validator = validation.ParentExists()
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            root_dir = pathlib.Path(pathlib.Path(tmp_dir_name).root)
+            with self.assertRaises(argparse.ArgumentTypeError):
+                validator(root_dir, str(root_dir))
+
+    def test_inside_argparse(self):
+        parser = argparse.ArgumentParser()
+        validator = validation.ParentExists()
+        parser.add_argument("--path", type=pathtype.Path(validator=validator))
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            sub_dir = pathlib.Path(tmp_dir_name) / "sub-dir"
+            sub_dir.mkdir()
+            # When the parent exists, we should then have the path in the
+            # args
+            os.chdir(tmp_dir_name)
+            expected = pathlib.Path(sub_dir.name)
+            args = parser.parse_args(["--path", str(expected)])
+            self.assertEqual(expected, args.path)
+
+            # Should fail if the parent doesn't exist
+            # argparse doesn't raise an exception when validation fails, instead
+            # it exits the program
+            with self.assertRaises(SystemExit):
+                # The following line will output to STDERR something like
+                # "usage: [...] error: argument --path: path exists". It's
+                # all good.
+                parser.parse_args(["--path", "non-existent/sub-file"])

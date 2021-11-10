@@ -67,6 +67,15 @@ class Path:
         If ``True``, validates that the user has "execute" access on the file or
         directory pointed by the path. Implies ``exists``.
 
+    ``parent_exists`` (boolean, default: `False`)
+        If ``True``, validates that the direct parent directory of the path
+        exists. If the user doesn't have the required permissions to validate
+        its existence (e.g. the user doesn't have the "execute" permission on
+        the parent directory's parent), an error is raised. This validation
+        is ignored if ``exists`` (or any other validation that implies it) is
+        set to ``True``. See documentation of ``validation.ParentExists`` for a
+        remark about symbolic links.
+
     **Example**:
 
     >>> import pathtype
@@ -132,6 +141,7 @@ class Path:
        "``readable``", "``UserReadable``"
        "``writable``", "``UserWritable``"
        "``executable``", "``UserExecutable``"
+       "``parent_exists``", "``ParentExists``"
 
     For example, if you want to first validate the directory name
     before validating that user has "write" access, you could do it like this:
@@ -161,11 +171,13 @@ class Path:
         the pointed file. Implies `exists=True`.
     :param executable: If True, validate that the user has "execute" permission
         on the pointed file. Implies `exists=True`.
+    :param parent_exists: If True, validate that the direct parent directory of
+        the path exists
     """
 
     def __init__(self, *, validator: Optional[_Validations] = None,
                  exists=False, not_exists=False, readable=False, writable=False,
-                 executable=False):
+                 executable=False, parent_exists=False):
         validations = []
 
         # If `readable`, `writable` or `executable` is set, we automatically set
@@ -192,6 +204,10 @@ class Path:
             validations.append(val.UserWritable())
         if executable:
             validations.append(val.UserExecutable())
+
+        # The `parent_exists`. Ignored if `exists` is True
+        if parent_exists and not exists:
+            validations.append(val.ParentExists())
 
         # Any custom validation
         if validator is not None:
