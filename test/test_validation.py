@@ -278,14 +278,16 @@ class TestReadable(_AccessTestCase):
     def test_does_nothing_if_readable(self):
         validator = validation.UserReadable()
         # Note: we test by creating temporary files. Because of that, we are
-        # not able to test when the user is not the owner of the file.
+        # not able to change ownership of the test file, and thus unable to
+        # test when the user is not the owner of the file.
         modes = (0o700, 0o477)
         self.assert_pass_if_has_access(validator, modes)
 
     def test_raises_if_not_readable(self):
         validator = validation.UserReadable()
         # Note: we test by creating temporary files. Because of that, we are
-        # not able to test when the user is not the owner of the file.
+        # not able to change ownership of the test file, and thus unable to
+        # test when the user is not the owner of the file.
         modes = (0o333, 0o077)
         self.assert_fails_if_doesnt_have_access(validator, modes)
 
@@ -302,14 +304,16 @@ class TestWritable(_AccessTestCase):
     def test_does_nothing_if_writable(self):
         validator = validation.UserWritable()
         # Note: we test by creating temporary files. Because of that, we are
-        # not able to test when the user is not the owner of the file.
+        # not able to change ownership of the test file, and thus unable to
+        # test when the user is not the owner of the file.
         modes = (0o700, 0o277)
         self.assert_pass_if_has_access(validator, modes)
 
     def test_raises_if_not_writable(self):
         validator = validation.UserWritable()
         # Note: we test by creating temporary files. Because of that, we are
-        # not able to test when the user is not the owner of the file.
+        # not able to change ownership of the test file, and thus unable to
+        # test when the user is not the owner of the file.
         modes = (0o533, 0o077)
         self.assert_fails_if_doesnt_have_access(validator, modes)
 
@@ -326,14 +330,16 @@ class TestExecutable(_AccessTestCase):
     def test_does_nothing_if_executable(self):
         validator = validation.UserExecutable()
         # Note: we test by creating temporary files. Because of that, we are
-        # not able to test when the user is not the owner of the file.
+        # not able to change ownership of the test file, and thus unable to
+        # test when the user is not the owner of the file.
         modes = (0o100, 0o377)
         self.assert_pass_if_has_access(validator, modes)
 
     def test_raises_if_not_executable(self):
         validator = validation.UserExecutable()
         # Note: we test by creating temporary files. Because of that, we are
-        # not able to test when the user is not the owner of the file.
+        # not able to change ownership of the test file, and thus unable to
+        # test when the user is not the owner of the file.
         modes = (0o633, 0o077)
         self.assert_fails_if_doesnt_have_access(validator, modes)
 
@@ -493,3 +499,149 @@ class TestParentExists(unittest.TestCase):
                 # "usage: [...] error: argument --path: path exists". It's
                 # all good.
                 parser.parse_args(["--path", "non-existent/sub-file"])
+
+
+class TestParentUserWritable(_AccessTestCase):
+    def test_does_nothing_if_writable(self):
+        validator = validation.ParentUserWritable()
+        # Note: we test by creating temporary files. Because of that, we are
+        # not able to change ownership of the test file, and thus unable to
+        # test when the user is not the owner of the file.
+        modes = (0o700, 0o277)
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            parent_dir = pathlib.Path(tmp_dir_name) / "parent"
+            other_dir = pathlib.Path(tmp_dir_name) / "other_dir"
+            test_file = pathlib.Path("../parent/file.txt")
+
+            parent_dir.mkdir()
+            other_dir.mkdir()
+            os.chdir(other_dir)
+
+            try:
+                for mode in modes:
+                    parent_dir.chmod(mode)
+                    validator(test_file, str(test_file))
+            finally:
+                # Make sure that, no matter what, the files will be able to be
+                # deleted
+                parent_dir.chmod(0o766)
+
+    def test_raises_if_not_writable(self):
+        validator = validation.ParentUserWritable()
+        # Note: we test by creating temporary files. Because of that, we are
+        # not able to change ownership of the test file, and thus unable to
+        # test when the user is not the owner of the file.
+        modes = (0o557, 0o140)
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            parent_dir = pathlib.Path(tmp_dir_name) / "parent"
+            other_dir = pathlib.Path(tmp_dir_name) / "other_dir"
+            test_file = pathlib.Path("../parent/file.txt")
+
+            parent_dir.mkdir()
+            other_dir.mkdir()
+            (parent_dir / test_file.name).touch()
+            os.chdir(other_dir)
+
+            try:
+                for mode in modes:
+                    parent_dir.chmod(mode)
+                    with self.assertRaises(argparse.ArgumentTypeError):
+                        validator(test_file, str(test_file))
+            finally:
+                # Make sure that, no matter what, the files will be able to be
+                # deleted
+                parent_dir.chmod(0o766)
+
+    def test_symlink_in_parents(self):
+        """
+        Test that symbolic links in the path are resolved when determining the
+        parent
+        """
+        validator = validation.ParentUserWritable()
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            # Original directory containing the file.
+            orig_dir = pathlib.Path(tmp_dir_name) / "directory/subdir"
+            # Symbolic link to orig dir
+            sym_dir = pathlib.Path(tmp_dir_name) / "sym_to_orig"
+            test_file = pathlib.Path("./sym_to_orig/test/../my_file.txt")
+
+            orig_dir.mkdir(parents=True)
+            sym_dir.symlink_to(orig_dir)
+
+            os.chdir(tmp_dir_name)
+
+            # Should not raise any error if parent is writable
+            validator(test_file, str(test_file))
+
+            # We remove write permission (for user) on orig_dir
+            orig_dir.chmod(0o557)
+
+            try:
+                # Validation should then fail
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    validator(test_file, str(test_file))
+            finally:
+                orig_dir.chmod(0o766)
+
+    def test_path_is_symlink(self):
+        """
+        Test that symbolic links in the path are resolved when determining the
+        parent
+        """
+        validator = validation.ParentUserWritable()
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            # Original directory containing the file.
+            orig_dir = pathlib.Path(tmp_dir_name) / "directory/subdir"
+            orig_file = orig_dir / "my_file.txt"
+            # Symbolic link to orig file
+            sym_file = pathlib.Path(tmp_dir_name) / "sym_to_my_file.txt"
+            test_file = pathlib.Path(f"test/../{sym_file.name}")
+
+            orig_dir.mkdir(parents=True)
+            orig_file.touch()
+            sym_file.symlink_to(orig_file)
+
+            os.chdir(tmp_dir_name)
+
+            # Should not raise any error if parent is writable
+            validator(test_file, str(test_file))
+
+            # We remove user's write permission on the orig_dir
+            orig_dir.chmod(0o547)
+
+            try:
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    validator(test_file, str(test_file))
+            finally:
+                orig_dir.chmod(0o766)
+
+    def test_inside_argparse(self):
+        parser = argparse.ArgumentParser()
+        validator = validation.ParentUserWritable()
+        parser.add_argument("--path", type=pathtype.Path(validator=validator))
+
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            sub_dir = pathlib.Path(tmp_dir_name) / "sub-dir"
+            test_file = pathlib.Path("sub-dir/test_file.txt")
+            sub_dir.mkdir()
+            # When the parent is writable, we should be able to extract the file
+            os.chdir(tmp_dir_name)
+            args = parser.parse_args(["--path", str(test_file)])
+            self.assertEqual(test_file, args.path)
+
+            try:
+                # Should fail if the parent is not writable
+                sub_dir.chmod(0o500)
+                # argparse doesn't raise an exception when validation fails, instead
+                # it exits the program
+                with self.assertRaises(SystemExit):
+                    # The following line will output to STDERR something like
+                    # "usage: [...] error: argument --path: path exists". It's
+                    # all good.
+                    parser.parse_args(["--path", str(test_file)])
+            finally:
+                sub_dir.chmod(0o766)
