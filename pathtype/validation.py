@@ -49,6 +49,28 @@ class Any:
         raise last_exception
 
 
+class All:
+    """
+    Container of validators that validates if all of its validators succeeds.
+
+    Child validators are run sequentially. At the first that fails (raises
+    any exception), this validator container immediately ends and re-raises the
+    exception. Subsequent child validators are not executed.
+
+    :param validations: validators to execute
+    """
+    def __init__(self, *validations: _Validations):
+        self.validations = validations
+
+    def __call__(self, path: pathlib.Path, arg: str):
+        """
+        :param path: Path to validate
+        :param arg: Raw string value of the argument
+        """
+        for validation in self.validations:
+            validation(path, arg)
+
+
 class Exists:
     """
     Validator that checks that the path points to an existing object.

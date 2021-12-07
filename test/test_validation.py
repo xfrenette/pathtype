@@ -157,6 +157,39 @@ class TestAny(unittest.TestCase):
             self.assertIs(last_exception, raised_exception)
 
 
+class TestAll(unittest.TestCase):
+    def test_passes_if_all(self):
+        all_validator = validation.All(_passing_validation,
+                                       _passing_validation,
+                                       _passing_validation)
+        # Shouldn't do anything
+        all_validator(pathlib.Path("tmp"), "tmp")
+
+    def test_fails_if_any_fails(self):
+        all_validator = validation.All(_passing_validation,
+                                       _passing_validation,
+                                       _failing_validation,
+                                       _passing_validation)
+
+        with self.assertRaises(argparse.ArgumentTypeError):
+            all_validator(pathlib.Path("tmp"), "tmp")
+
+    def test_returns_first_exceptions(self):
+        for ExceptionType in (TypeError, Exception):
+            first_exception = ExceptionType("--Test exception--")
+
+            def first_validator(*args):
+                raise first_exception
+
+            all_validator = validation.All(_passing_validation,
+                                           first_validator,
+                                           _failing_validation)
+
+            with self.assertRaises(ExceptionType) as raised_exception:
+                all_validator(pathlib.Path("tmp"), "tmp")
+                self.assertIs(first_exception, raised_exception)
+
+
 class TestExists(unittest.TestCase):
     def test_does_nothing_if_exists(self):
         validator = validation.Exists()
