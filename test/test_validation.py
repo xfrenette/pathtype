@@ -156,6 +156,18 @@ class TestAny(unittest.TestCase):
             any_validator(pathlib.Path("tmp"), "tmp")
             self.assertIs(last_exception, raised_exception)
 
+    def test_equality(self):
+        validator1 = validation.Any(validation.Exists(),
+                                    validation.UserWritable())
+        validator2 = validation.Any(validation.Exists(),
+                                    validation.UserWritable())
+        validator3 = validation.Any(validation.Exists())
+        validator4 = validation.Any(validation.Exists(),
+                                    validation.UserExecutable())
+        self.assertEqual(validator1, validator2)
+        self.assertNotEqual(validator1, validator3)
+        self.assertNotEqual(validator1, validator4)
+
 
 class TestAll(unittest.TestCase):
     def test_passes_if_all(self):
@@ -188,6 +200,18 @@ class TestAll(unittest.TestCase):
             with self.assertRaises(ExceptionType) as raised_exception:
                 all_validator(pathlib.Path("tmp"), "tmp")
                 self.assertIs(first_exception, raised_exception)
+
+    def test_equality(self):
+        validator1 = validation.All(validation.Exists(),
+                                    validation.UserWritable())
+        validator2 = validation.All(validation.Exists(),
+                                    validation.UserWritable())
+        validator3 = validation.All(validation.Exists())
+        validator4 = validation.All(validation.Exists(),
+                                    validation.UserExecutable())
+        self.assertEqual(validator1, validator2)
+        self.assertNotEqual(validator1, validator3)
+        self.assertNotEqual(validator1, validator4)
 
 
 class TestExists(unittest.TestCase):
@@ -274,6 +298,11 @@ class TestExists(unittest.TestCase):
                 # "usage: [...] error: argument --path: path exists". It's
                 # all good.
                 parser.parse_args(["--path", f"{tmp_dir_name}/non-existent"])
+
+    def test_equality(self):
+        validator1 = validation.Exists()
+        validator2 = validation.Exists()
+        self.assertEqual(validator1, validator2)
 
 
 class TestNotExists(unittest.TestCase):
@@ -364,6 +393,11 @@ class TestNotExists(unittest.TestCase):
                 # all good.
                 parser.parse_args(["--path", tmp_dir_name])
 
+    def test_equality(self):
+        validator1 = validation.NotExists()
+        validator2 = validation.NotExists()
+        self.assertEqual(validator1, validator2)
+
 
 class TestReadable(_AccessTestCase):
     def test_does_nothing_if_readable(self):
@@ -389,6 +423,11 @@ class TestReadable(_AccessTestCase):
     def test_inside_argparse(self):
         validator = validation.UserReadable()
         self.assert_works_in_argparse(validator, 0o400, 0o200)
+
+    def test_equality(self):
+        validator1 = validation.UserReadable()
+        validator2 = validation.UserReadable()
+        self.assertEqual(validator1, validator2)
 
 
 class TestWritable(_AccessTestCase):
@@ -416,6 +455,11 @@ class TestWritable(_AccessTestCase):
         validator = validation.UserWritable()
         self.assert_works_in_argparse(validator, 0o200, 0o500)
 
+    def test_equality(self):
+        validator1 = validation.UserWritable()
+        validator2 = validation.UserWritable()
+        self.assertEqual(validator1, validator2)
+
 
 class TestExecutable(_AccessTestCase):
     def test_does_nothing_if_executable(self):
@@ -441,6 +485,11 @@ class TestExecutable(_AccessTestCase):
     def test_inside_argparse(self):
         validator = validation.UserExecutable()
         self.assert_works_in_argparse(validator, 0o300, 0o200)
+
+    def test_equality(self):
+        validator1 = validation.UserExecutable()
+        validator2 = validation.UserExecutable()
+        self.assertEqual(validator1, validator2)
 
 
 class TestParentExists(unittest.TestCase):
@@ -591,6 +640,11 @@ class TestParentExists(unittest.TestCase):
                 # all good.
                 parser.parse_args(["--path", "non-existent/sub-file"])
 
+    def test_equality(self):
+        validator1 = validation.ParentExists()
+        validator2 = validation.ParentExists()
+        self.assertEqual(validator1, validator2)
+
 
 class TestParentUserWritable(_AccessTestCase):
     def test_does_nothing_if_writable(self):
@@ -736,3 +790,8 @@ class TestParentUserWritable(_AccessTestCase):
                     parser.parse_args(["--path", str(test_file)])
             finally:
                 sub_dir.chmod(0o766)
+
+    def test_equality(self):
+        validator1 = validation.ParentUserWritable()
+        validator2 = validation.ParentUserWritable()
+        self.assertEqual(validator1, validator2)

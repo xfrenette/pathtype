@@ -8,7 +8,30 @@ _ValidationCallable = Callable[[pathlib.Path, str], None]
 _Validations = Union[_ValidationCallable, Iterable[_ValidationCallable]]
 
 
-class Any:
+class _SimpleValidation:
+    def __eq__(self, other):
+        return type(self) == type(other)
+
+
+class _LogicalValidation:
+    def __init__(self, *validations: _Validations):
+        """
+        :param validations: validators to execute
+        """
+        self.validations = validations
+
+    def __eq__(self, other: "_LogicalValidation"):
+        if type(self) != type(other):
+            return False
+        if len(self.validations) != len(other.validations):
+            return False
+        for self_val, other_val in zip(self.validations, other.validations):
+            if self_val != other_val:
+                return False
+        return True
+
+
+class Any(_LogicalValidation):
     """
     Container of validators that validates if any of its validators succeeds.
 
@@ -23,12 +46,7 @@ class Any:
     If any child validator raises an unsupported exception, execution of
     subsequent child validators is halted and the raised exception raises to
     the caller.
-
-    :param validations: validators to execute
     """
-
-    def __init__(self, *validations: _Validations):
-        self.validations = validations
 
     def __call__(self, path: pathlib.Path, arg: str):
         """
@@ -49,18 +67,14 @@ class Any:
         raise last_exception
 
 
-class All:
+class All(_LogicalValidation):
     """
     Container of validators that validates if all of its validators succeeds.
 
     Child validators are run sequentially. At the first that fails (raises
     any exception), this validator container immediately ends and re-raises the
     exception. Subsequent child validators are not executed.
-
-    :param validations: validators to execute
     """
-    def __init__(self, *validations: _Validations):
-        self.validations = validations
 
     def __call__(self, path: pathlib.Path, arg: str):
         """
@@ -71,7 +85,7 @@ class All:
             validation(path, arg)
 
 
-class Exists:
+class Exists(_SimpleValidation):
     """
     Validator that checks that the path points to an existing object.
 
@@ -99,7 +113,7 @@ class Exists:
                 f"not enough permissions to validate existence of path: {arg}")
 
 
-class NotExists:
+class NotExists(_SimpleValidation):
     """
     Validator that checks that the path points to a non-existent object.
 
@@ -127,7 +141,7 @@ class NotExists:
                 f"not enough permissions to validate existence of path: {arg}")
 
 
-class UserReadable:
+class UserReadable(_SimpleValidation):
     """
     Validator that checks that the user has "read" access on the pointed file.
 
@@ -161,7 +175,7 @@ class UserReadable:
             raise argparse.ArgumentTypeError(f"path is not readable: {arg}")
 
 
-class UserWritable:
+class UserWritable(_SimpleValidation):
     """
     Validator that checks that the user has "write" access on the pointed file.
 
@@ -195,7 +209,7 @@ class UserWritable:
             raise argparse.ArgumentTypeError(f"path is not writable: {arg}")
 
 
-class UserExecutable:
+class UserExecutable(_SimpleValidation):
     """
     Validator that checks that the user has "execute" access on the file.
 
@@ -229,7 +243,7 @@ class UserExecutable:
             raise argparse.ArgumentTypeError(f"path is not executable: {arg}")
 
 
-class ParentExists:
+class ParentExists(_SimpleValidation):
     """
     Validator that checks that the direct parent directory of the path exists.
 
@@ -276,7 +290,7 @@ class ParentExists:
                 f" path: {arg}")
 
 
-class ParentUserWritable:
+class ParentUserWritable(_SimpleValidation):
     """
     Validator that checks that the user has "write" permission on the parent
     directory of the path.
