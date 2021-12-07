@@ -88,3 +88,9 @@ Running this script ends with the following error message:
 usage: myscript.py [-h] [--path PATH]
 myscript.py: error: argument --path: invalid file name (image.jpg)
 ```
+
+You can also create more complex validations using the ``validation.Any`` and
+``validation.All`` classes. The first one accepts multiple validations and
+validates as soon as any of its child validations validates. The second also 
+accepts multiple validations and validates only if all of its child 
+validations validate.
