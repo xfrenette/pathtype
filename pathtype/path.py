@@ -1,11 +1,13 @@
 import collections.abc
 import pathlib
-from typing import Callable, Iterable, List, Optional, Union
+from typing import List, Optional
 
 from . import validation as val
 
-_ValidationCallable = Callable[[pathlib.Path, str], None]
-_Validations = Union[_ValidationCallable, Iterable[_ValidationCallable]]
+# noinspection PyProtectedMember
+_Validations = val._Validations
+# noinspection PyProtectedMember
+_ValidationCallable = val._ValidationCallable
 
 
 class Path:

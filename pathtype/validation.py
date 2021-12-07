@@ -1,6 +1,52 @@
 import argparse
 import os
 import pathlib
+from typing import Callable, Iterable, Union
+
+
+_ValidationCallable = Callable[[pathlib.Path, str], None]
+_Validations = Union[_ValidationCallable, Iterable[_ValidationCallable]]
+
+
+class Any:
+    """
+    Container of validators that validates if any of its validators succeeds.
+
+    Child validators are run sequentially. At the first that succeeds
+    (doesn't raise any exception), this validator container immediately ends
+    (validation passed). Subsequent child validators are not executed.
+
+    If all child validators failed *and* they all raised a supported exception
+    (``argparse.ArgumentTypeError``, ``TypeError`` or ``ValueError``) the
+    exception raised by the last children will be raised by this container.
+
+    If any child validator raises an unsupported exception, execution of
+    subsequent child validators is halted and the raised exception raises to
+    the caller.
+
+    :param validations: validators to execute
+    """
+
+    def __init__(self, *validations: _Validations):
+        self.validations = validations
+
+    def __call__(self, path: pathlib.Path, arg: str):
+        """
+        :param path: Path to validate
+        :param arg: Raw string value of the argument
+        """
+        managed_exceptions = (argparse.ArgumentTypeError, TypeError, ValueError)
+        last_exception = None
+
+        for validation in self.validations:
+            try:
+                validation(path, arg)
+                # We stop at the first validator that passes
+                return
+            except managed_exceptions as exception:
+                last_exception = exception
+
+        raise last_exception
 
 
 class Exists:

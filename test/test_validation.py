@@ -10,6 +10,15 @@ import pathtype
 import pathtype.validation as validation
 
 
+def _failing_validation(*args):
+    raise argparse.ArgumentTypeError("Fail")
+
+
+def _passing_validation(*args):
+    # Do nothing
+    pass
+
+
 class _AccessTestCase(unittest.TestCase):
     def assert_pass_if_has_access(self, validator: Callable,
                                   modes: Sequence[int]):
@@ -21,7 +30,8 @@ class _AccessTestCase(unittest.TestCase):
             test_file.touch()
 
             try:
-                for mode, test_obj in itertools.product(modes, (test_dir, test_file)):
+                for mode, test_obj in itertools.product(modes,
+                                                        (test_dir, test_file)):
                     test_obj.chmod(mode)
                     validator(test_obj, str(test_obj.absolute()))
             finally:
@@ -97,6 +107,54 @@ class _AccessTestCase(unittest.TestCase):
                 # deleted
                 pass_file.chmod(0o766)
                 fail_file.chmod(0o766)
+
+
+class TestAny(unittest.TestCase):
+    def test_passes_if_any(self):
+        any_validator = validation.Any(_failing_validation,
+                                       _passing_validation,
+                                       _failing_validation)
+        # Shouldn't do anything
+        any_validator(pathlib.Path("tmp"), "tmp")
+
+    def test_fails_if_none_passes(self):
+        any_validator = validation.Any(_failing_validation, _failing_validation)
+
+        with self.assertRaises(argparse.ArgumentTypeError):
+            any_validator(pathlib.Path("tmp"), "tmp")
+
+    def test_returns_last_of_supported_exceptions(self):
+        """
+        If a validator raises one of the exceptions supported by argparse,
+        the any validator should manage it and return the last one
+        """
+        last_exception = TypeError("--Test exception--")
+
+        def last_validator(*args):
+            raise last_exception
+
+        any_validator = validation.Any(_failing_validation, last_validator)
+
+        with self.assertRaises(type(last_exception)) as raised_exception:
+            any_validator(pathlib.Path("tmp"), "tmp")
+            self.assertIs(last_exception, raised_exception)
+
+    def test_doesnt_catch_other_exceptions(self):
+        """
+        If a validator raise any other exception not supported by argparse, it
+        should be raised immediately
+        """
+        last_exception = Exception("--Test exception--")
+
+        def failing_validator(*args):
+            raise last_exception
+
+        any_validator = validation.Any(_failing_validation, failing_validator,
+                                       _passing_validation)
+
+        with self.assertRaises(type(last_exception)) as raised_exception:
+            any_validator(pathlib.Path("tmp"), "tmp")
+            self.assertIs(last_exception, raised_exception)
 
 
 class TestExists(unittest.TestCase):
