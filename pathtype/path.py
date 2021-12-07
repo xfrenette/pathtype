@@ -88,7 +88,18 @@ class Path:
         may change after the check. The validation doesn't check if the path
         already points to an existing file or directory. The parent directory
         must already exist though, so this validation implies
-        ``parent_exists=True``.
+        ``parent_exists=True``. If you want to validate that the file can be
+        created *or*, if it exists, that the user has "write" permission on it,
+        check ``writable_or_creatable``.
+
+    ``writable_or_creatable`` (boolean, default: `False`)
+        If ``True``, equivalent to ``writable`` if the path points to an
+        existing file or directory, else equivalent to ``writable``. This
+        more complex validation can be used, for example, to validate that we
+        can write in a file or, if it doesn't exist, that we will be able to
+        create it to then write in it. See both ``writable`` and
+        ``creatable`` for details. Cannot be used together with ``writable``
+        or ``creatable``.
 
     **Example**:
 
@@ -189,15 +200,22 @@ class Path:
         the path exists
     :param creatable: If True, validate that the parent directory exists and
         that the user has "write" permission on it.
+    :param writable_or_creatable: If True, equivalent to ``writable`` if the
+        path exists, else equivalent to ``creatable``.
     """
 
     def __init__(self, *, validator: Optional[_Validations] = None,
                  exists=False, not_exists=False, readable=False, writable=False,
-                 executable=False, parent_exists=False, creatable=False):
+                 executable=False, parent_exists=False, creatable=False,
+                 writable_or_creatable=False):
         validations = []
 
         if writable or readable or executable:
             exists = True
+
+        if writable_or_creatable:
+            writable = False
+            creatable = False
 
         if exists and not_exists:
             raise ValueError("cannot have both exists and not_exists True")
@@ -223,6 +241,12 @@ class Path:
 
         if creatable:
             validations.append(val.ParentUserWritable())
+
+        if writable_or_creatable:
+            writable_validation = val.All(val.Exists(), val.UserWritable())
+            creatable_validation = val.All(val.ParentExists(),
+                                           val.ParentUserWritable())
+            validations.append(val.Any(writable_validation, creatable_validation))
 
         # Any custom validation
         if validator is not None:

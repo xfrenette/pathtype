@@ -162,6 +162,25 @@ class TestPathValidationParameters(unittest.TestCase):
         self.assertEqual(ptype.validations[2], other_validation)
         self.assertEqual(3, len(ptype.validations))
 
+    def test_writable_or_creatable(self):
+        """
+        Test that the "writable_or_creatable" validation adds the
+        expected logical validation.
+        """
+        other_validation = _mock_validation()
+        expected_any = validation.Any(
+            validation.All(validation.Exists(), validation.UserWritable()),
+            validation.All(validation.ParentExists(),
+                           validation.ParentUserWritable())
+        )
+
+        ptype = pathtype.Path(validator=other_validation,
+                              writable_or_creatable=True)
+        any_validation = ptype.validations[0]
+        self.assertEqual(any_validation, expected_any)
+        self.assertEqual(ptype.validations[1], other_validation)
+        self.assertEqual(2, len(ptype.validations))
+
 
 class TestPathValidations(unittest.TestCase):
     """
