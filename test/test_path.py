@@ -138,6 +138,30 @@ class TestPathValidationParameters(unittest.TestCase):
                 self.assertNotIsInstance(ptype_validation,
                                          validation.ParentExists)
 
+    def test_creatable(self):
+        """
+        Test that the "creatable" validation adds the `ParentUserWritable`
+        validation, before custom validations, and also that the
+        "parent_exists" is automatically set to True.
+        """
+        other_validation = _mock_validation()
+
+        # With `exists=False`
+        ptype = pathtype.Path(validator=other_validation, creatable=True)
+        self.assertIsInstance(ptype.validations[0], validation.ParentExists)
+        self.assertIsInstance(ptype.validations[1], validation.ParentUserWritable)
+        self.assertEqual(ptype.validations[2], other_validation)
+        self.assertEqual(3, len(ptype.validations))
+
+        # With `exists=True`, the `ParentExists` won't be added, but `Exists`
+        # will
+        ptype = pathtype.Path(validator=other_validation, creatable=True,
+                              exists=True)
+        self.assertIsInstance(ptype.validations[0], validation.Exists)
+        self.assertIsInstance(ptype.validations[1], validation.ParentUserWritable)
+        self.assertEqual(ptype.validations[2], other_validation)
+        self.assertEqual(3, len(ptype.validations))
+
 
 class TestPathValidations(unittest.TestCase):
     """

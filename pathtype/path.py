@@ -59,15 +59,15 @@ class Path:
 
     ``readable`` (boolean, default: `False`)
         If ``True``, validates that the user has "read" access on the file or
-        directory pointed by the path. Implies ``exists``.
+        directory pointed by the path. Implies ``exists=True``.
 
     ``writable`` (boolean, default: `False`)
         If ``True``, validates that the user has "write" access on the file or
-        directory pointed by the path. Implies ``exists``.
+        directory pointed by the path. Implies ``exists=True``.
 
     ``executable`` (boolean, default: `False`)
         If ``True``, validates that the user has "execute" access on the file or
-        directory pointed by the path. Implies ``exists``.
+        directory pointed by the path. Implies ``exists=True``.
 
     ``parent_exists`` (boolean, default: `False`)
         If ``True``, validates that the direct parent directory of the path
@@ -77,6 +77,18 @@ class Path:
         is ignored if ``exists`` (or any other validation that implies it) is
         set to ``True``. See documentation of ``validation.ParentExists`` for a
         remark about symbolic links.
+
+    ``creatable`` (boolean, default: `False`)
+        If ``True``, validates that the current user has "write" permission
+        on the direct parent directory of the path. This validation is
+        generally used to validate that the user can create the file or
+        directory at the path. Be warned that only the "write" permission is
+        checked at argument parsing time. Other restrictions might prevent
+        the user from actually creating the file, and the "write" permission
+        may change after the check. The validation doesn't check if the path
+        already points to an existing file or directory. The parent directory
+        must already exist though, so this validation implies
+        ``parent_exists=True``.
 
     **Example**:
 
@@ -175,31 +187,27 @@ class Path:
         on the pointed file. Implies `exists=True`.
     :param parent_exists: If True, validate that the direct parent directory of
         the path exists
+    :param creatable: If True, validate that the parent directory exists and
+        that the user has "write" permission on it.
     """
 
     def __init__(self, *, validator: Optional[_Validations] = None,
                  exists=False, not_exists=False, readable=False, writable=False,
-                 executable=False, parent_exists=False):
+                 executable=False, parent_exists=False, creatable=False):
         validations = []
 
-        # If `readable`, `writable` or `executable` is set, we automatically set
-        # `exists`
         if writable or readable or executable:
             exists = True
 
-        # Both `exists` and `not_exists` cannot be True at the same time
         if exists and not_exists:
             raise ValueError("cannot have both exists and not_exists True")
 
-        # The `exists` validation
         if exists:
             validations.append(val.Exists())
 
-        # The `not_exists` validation
         if not_exists:
             validations.append(val.NotExists())
 
-        # The `readable`, `writable` and `executable` validations
         if readable:
             validations.append(val.UserReadable())
         if writable:
@@ -207,9 +215,14 @@ class Path:
         if executable:
             validations.append(val.UserExecutable())
 
-        # The `parent_exists`. Ignored if `exists` is True
+        if creatable:
+            parent_exists = True
+
         if parent_exists and not exists:
             validations.append(val.ParentExists())
+
+        if creatable:
+            validations.append(val.ParentUserWritable())
 
         # Any custom validation
         if validator is not None:
