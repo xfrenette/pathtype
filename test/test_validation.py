@@ -1,7 +1,9 @@
 import argparse
+import contextlib
 import itertools
 import os
 import pathlib
+import re
 import tempfile
 import unittest
 from typing import Callable, Sequence
@@ -164,6 +166,7 @@ class TestAny(unittest.TestCase):
         validator3 = validation.Any(validation.Exists())
         validator4 = validation.Any(validation.Exists(),
                                     validation.UserExecutable())
+        self.assertEqual(validator1, validator1)
         self.assertEqual(validator1, validator2)
         self.assertNotEqual(validator1, validator3)
         self.assertNotEqual(validator1, validator4)
@@ -209,6 +212,7 @@ class TestAll(unittest.TestCase):
         validator3 = validation.All(validation.Exists())
         validator4 = validation.All(validation.Exists(),
                                     validation.UserExecutable())
+        self.assertEqual(validator1, validator1)
         self.assertEqual(validator1, validator2)
         self.assertNotEqual(validator1, validator3)
         self.assertNotEqual(validator1, validator4)
@@ -302,6 +306,7 @@ class TestExists(unittest.TestCase):
     def test_equality(self):
         validator1 = validation.Exists()
         validator2 = validation.Exists()
+        self.assertEqual(validator1, validator1)
         self.assertEqual(validator1, validator2)
 
 
@@ -396,6 +401,7 @@ class TestNotExists(unittest.TestCase):
     def test_equality(self):
         validator1 = validation.NotExists()
         validator2 = validation.NotExists()
+        self.assertEqual(validator1, validator1)
         self.assertEqual(validator1, validator2)
 
 
@@ -427,6 +433,7 @@ class TestReadable(_AccessTestCase):
     def test_equality(self):
         validator1 = validation.UserReadable()
         validator2 = validation.UserReadable()
+        self.assertEqual(validator1, validator1)
         self.assertEqual(validator1, validator2)
 
 
@@ -458,6 +465,7 @@ class TestWritable(_AccessTestCase):
     def test_equality(self):
         validator1 = validation.UserWritable()
         validator2 = validation.UserWritable()
+        self.assertEqual(validator1, validator1)
         self.assertEqual(validator1, validator2)
 
 
@@ -489,6 +497,7 @@ class TestExecutable(_AccessTestCase):
     def test_equality(self):
         validator1 = validation.UserExecutable()
         validator2 = validation.UserExecutable()
+        self.assertEqual(validator1, validator1)
         self.assertEqual(validator1, validator2)
 
 
@@ -643,6 +652,7 @@ class TestParentExists(unittest.TestCase):
     def test_equality(self):
         validator1 = validation.ParentExists()
         validator2 = validation.ParentExists()
+        self.assertEqual(validator1, validator1)
         self.assertEqual(validator1, validator2)
 
 
@@ -794,4 +804,136 @@ class TestParentUserWritable(_AccessTestCase):
     def test_equality(self):
         validator1 = validation.ParentUserWritable()
         validator2 = validation.ParentUserWritable()
+        self.assertEqual(validator1, validator1)
         self.assertEqual(validator1, validator2)
+
+
+class TestNameMatches(unittest.TestCase):
+    def test_with_re_pattern(self):
+        file_path = pathlib.Path("path/to/my_file_123.txt")
+
+        # Validation should pass when using patterns in the following list
+        valid_patterns = (
+            "^.+_[0-9]+",
+            "my_file_123.txt",
+            ".txt",
+        )
+
+        # Validation shouldn't pass when using patterns in the following list
+        invalid_patterns = (
+            "path",
+            "/my_file"
+        )
+
+        for valid_pattern in valid_patterns:
+            with self.subTest(type="valid", pattern=valid_pattern):
+                # Raw string
+                validator = validation.NameMatches(valid_pattern)
+                # Should not raise any error
+                validator(file_path, str(file_path))
+
+                # Compiled regular expression
+                validator = validation.NameMatches(re.compile(valid_pattern))
+                # Should not raise any error
+                validator(file_path, str(file_path))
+
+        for invalid_pattern in invalid_patterns:
+            with self.subTest(type="invalid", pattern=invalid_pattern):
+                # Raw string
+                validator = validation.NameMatches(invalid_pattern)
+                # Should raise an error
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    validator(file_path, str(file_path))
+
+                # Compiled regular expression
+                validator = validation.NameMatches(re.compile(invalid_pattern))
+                # Should raise an error
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    validator(file_path, str(file_path))
+
+    def test_with_glob(self):
+        file_path = pathlib.Path("path/to/my_file_123.txt")
+
+        # Validation should pass when using globs in the following list
+        valid_globs = (
+            "*.txt",
+            "my_file_123.txt",
+            "my_file_12?.txt",
+            "my_file_[123]*",
+        )
+
+        # Validation shouldn't pass when using globs in the following list
+        invalid_globs = (
+            "my_file",
+            "/my_file*",
+            "*.t",
+        )
+
+        for valid_glob in valid_globs:
+            with self.subTest(type="valid", pattern=valid_glob):
+                # Raw string
+                validator = validation.NameMatches(glob=valid_glob)
+                # Should not raise any error
+                validator(file_path, str(file_path))
+
+        for invalid_glob in invalid_globs:
+            with self.subTest(type="invalid", pattern=invalid_glob):
+                # Raw string
+                validator = validation.NameMatches(glob=invalid_glob)
+                # Should raise an error
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    validator(file_path, str(file_path))
+
+    def test_raises_if_no_pattern_and_no_glob(self):
+        with self.assertRaises(ValueError):
+            validation.NameMatches()
+
+    def test_raises_if_both_pattern_and_glob(self):
+        with self.assertRaises(ValueError):
+            validation.NameMatches("pattern", "glob")
+
+    def test_raises_if_invalid_pattern(self):
+        with self.assertRaises(ValueError):
+            # Invalid RE: missing a right ")"
+            validation.NameMatches("((invalid)")
+
+    def test_equality(self):
+        # Test with string pattern
+
+        validator_base = validation.NameMatches("test")
+        validator_equal = validation.NameMatches("test")
+        validator_ne = validation.NameMatches("test2")
+
+        self.assertEqual(validator_base, validator_base)
+        self.assertEqual(validator_base, validator_equal)
+        self.assertNotEqual(validator_base, validator_ne)
+
+        # Test with compiled pattern
+
+        # We use re.DEBUG to prevent caching of compiled patterns. If it's not
+        # there, then `pattern1 is pattern2` will generally be true, preventing
+        # us from comparing validations using equal but different patterns.
+        # Note that the debug mode has a side effect of outputting compiled
+        # patterns on stdout after compilation. To avoid those messages,
+        # we temporarily catch and dismiss any output to stdout.
+        with contextlib.redirect_stdout(None):
+            pattern1 = re.compile("test", re.DEBUG)
+            pattern2 = re.compile("test", re.DEBUG)
+        pattern3 = re.compile("test", re.IGNORECASE)
+        validator_base = validation.NameMatches(pattern1)
+        validator_equal = validation.NameMatches(pattern2)
+        validator_ne = validation.NameMatches(pattern3)
+
+        self.assertEqual(validator_base, validator_base)
+        self.assertEqual(validator_base, validator_equal)
+        self.assertNotEqual(validator_base, validator_ne)
+
+        # Test with glob pattern
+
+        validator_base = validation.NameMatches(glob="*.test")
+        validator_equal = validation.NameMatches(glob="*.test")
+        validator_ne = validation.NameMatches(glob="*.other")
+
+        self.assertEqual(validator_base, validator_base)
+        self.assertEqual(validator_base, validator_equal)
+        self.assertNotEqual(validator_base, validator_ne)

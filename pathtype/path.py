@@ -1,6 +1,6 @@
 import collections.abc
 import pathlib
-from typing import List, Optional
+from typing import List, Optional, Pattern, Union
 
 from . import validation as val
 
@@ -101,6 +101,29 @@ class Path:
         ``creatable`` for details. Cannot be used together with ``writable``
         or ``creatable``.
 
+    ``name_matches_re`` (String or compiled regular expression pattern,
+        default: None)
+        If a string, uses it as a regular expression pattern and validates
+        that it matches the name part of the path. If a compiled regular
+        expression pattern, uses it for the match. If None, skips this
+        validation. The pattern is searched anywhere in the name, not only at
+        the begining. So the pattern `"test"` would be found in the name
+        ``my_test_file.txt``, while `"^test"` would not. The name part of the
+        path is what is frequently called the "file name", including any
+        extension. For example, the name in the path
+        ``/path/to/my_file.tmp.txt`` is ``my_file.tmp.txt``. Note that some
+        paths don't have a name, like the Windows path `C:/`. If you prefer
+        to use glob patterns (ex: "*.txt"), see ``name_matches_glob``.
+
+    ``name_matches_glob`` (String, default: None)
+        If a string, validates that the name part of the path matches this
+        glob. If None, skips this validation. More information about globs
+        can be [found here](https://docs.python.org/3/library/fnmatch.html).
+        The name part of the path is what is frequently called the "file
+        name", including any extension. For example, the name in the path
+        ``/path/to/my_file.tmp.txt`` is ``my_file.tmp.txt``. If you prefer to
+        use regular expressions (ex: "[a-b]+]"), see ``name_matches_re``.
+
     **Example**:
 
     >>> import pathtype
@@ -167,6 +190,8 @@ class Path:
        "``writable``", "``UserWritable``"
        "``executable``", "``UserExecutable``"
        "``parent_exists``", "``ParentExists``"
+       "``name_matches_re``", "``NameMatches``"
+       "``name_matches_glob``", "``NameMatches``"
 
     For example, if you want to first validate the directory name
     before validating that user has "write" access, you could do it like this:
@@ -202,12 +227,18 @@ class Path:
         that the user has "write" permission on it.
     :param writable_or_creatable: If True, equivalent to ``writable`` if the
         path exists, else equivalent to ``creatable``.
+    :param name_matches_re: Regular expression string or compiled pattern to
+        compare against the name part of the path. Ignored if None.
+    :param name_matches_glob: Glob string to compare against the name part of
+        the path. Ignored if None.
     """
 
     def __init__(self, *, validator: Optional[_Validations] = None,
                  exists=False, not_exists=False, readable=False, writable=False,
                  executable=False, parent_exists=False, creatable=False,
-                 writable_or_creatable=False):
+                 writable_or_creatable=False,
+                 name_matches_re: Optional[Union[str, Pattern]] = None,
+                 name_matches_glob: Optional[str] = None):
         validations = []
 
         if writable or readable or executable:
@@ -247,6 +278,16 @@ class Path:
             creatable_validation = val.All(val.ParentExists(),
                                            val.ParentUserWritable())
             validations.append(val.Any(writable_validation, creatable_validation))
+
+        if name_matches_re is not None and name_matches_glob is not None:
+            raise ValueError("Cannot use name_matches_re and name_matches_glob "
+                             "at the same time.")
+
+        if name_matches_re is not None:
+            validations.append(val.NameMatches(name_matches_re))
+
+        if name_matches_glob is not None:
+            validations.append(val.NameMatches(glob=name_matches_glob))
 
         # Any custom validation
         if validator is not None:

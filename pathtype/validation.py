@@ -1,15 +1,20 @@
 import argparse
+import fnmatch
 import os
 import pathlib
-from typing import Callable, Iterable, Union
-
+import re
+from typing import Callable, Iterable, Union, Pattern, Optional
 
 _ValidationCallable = Callable[[pathlib.Path, str], None]
 _Validations = Union[_ValidationCallable, Iterable[_ValidationCallable]]
+_RE_Error = type(re.error(""))
 
 
 class _SimpleValidation:
     def __eq__(self, other):
+        if self is other:
+            return True
+
         return type(self) == type(other)
 
 
@@ -335,9 +340,90 @@ class ParentUserWritable(_SimpleValidation):
     """
 
     def __call__(self, path: pathlib.Path, arg: str):
+        """
+        :param path: Path whose parent we want to validate
+        :param arg: Raw string value of the argument
+        """
         resolved = path.resolve()
         parent = resolved.parent
 
         if not os.access(parent, os.W_OK):
             raise argparse.ArgumentTypeError(f"parent directory is not "
                                              f"writable: {arg}")
+
+
+class NameMatches:
+    """
+    Validator that checks that the name part of the path matches a pattern.
+
+    The name part of the path is what is frequently called the "file name",
+    including any file extension, but excluding any drive and root. For
+    example, in the path `/path/to/my_file.txt.tmp`, the name is
+    `my_file.txt.tmp`. Note that some paths have an empty name, like this
+    Windows path: `C:/`.
+
+    The `pattern` is either a compiled regular expression, or a regular
+    expression pattern string. The pattern will be searched anywhere in the
+    name. So if it doesn't start with the "beginning of line" character
+    (`^`), it can match anywhere. For example, the pattern `"test"` would
+    match the name `my_test_file.txt`, while the pattern `"^test"` would not.
+
+    Instead of a regular expression pattern, you can pass a glob pattern as
+    the `glob` argument. Glob patterns are [described here](
+    https://docs.python.org/3/library/fnmatch.html).
+
+    You cannot specify both a `pattern` and a `glob`, but you must specify
+    one of them. A `ValueError` would be raised in other cases.
+
+    :param pattern: String or compiled regular expression name pattern
+    :param glob: Glob name pattern
+    """
+
+    def __init__(self, pattern: Optional[Union[str, Pattern]] = None,
+                 glob: Optional[str] = None):
+        self.pattern = pattern
+        self.glob = self.glob = glob
+
+        if isinstance(pattern, str):
+            try:
+                self.pattern = re.compile(pattern)
+            except _RE_Error as e:
+                raise ValueError(f"Could not compile pattern \"{pattern}\" into"
+                                 f" a regular expression object")
+
+        nb_none_patterns = sum(attr is None for attr in (self.pattern, self.glob))
+        if nb_none_patterns != 1:
+            raise ValueError("You must specify a pattern or a glob (only one)")
+
+    def __call__(self, path: pathlib.Path, arg: str):
+        """
+        :param path: Path whose parent we want to validate
+        :param arg: Raw string value of the argument
+        """
+        name = path.name
+        not_found = False
+        message_match = ""
+
+        if self.pattern is not None:
+            if self.pattern.search(name) is None:
+                not_found = True
+                message_match = f"pattern \"{self.pattern.pattern}\""
+        else:
+            if not fnmatch.fnmatch(name, self.glob):
+                not_found = True
+                message_match = f"glob \"{self.glob}\""
+
+        if not_found:
+            raise argparse.ArgumentTypeError(f"Name part of path ({name}) "
+                                             f"doesn't match {message_match}")
+
+    def __eq__(self, other: "NameMatches"):
+        if self is other:
+            return True
+
+        if isinstance(other, type(self)):
+            if self.pattern is not None:
+                return self.pattern == other.pattern
+            return self.glob == other.glob
+
+        return NotImplemented

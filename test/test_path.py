@@ -181,6 +181,28 @@ class TestPathValidationParameters(unittest.TestCase):
         self.assertEqual(ptype.validations[1], other_validation)
         self.assertEqual(2, len(ptype.validations))
 
+    def test_name_matches_re(self):
+        other_validation = _mock_validation()
+        ptype = pathtype.Path(validator=other_validation,
+                              name_matches_re="test")
+        expected_validation = validation.NameMatches("test")
+        self.assertEqual(ptype.validations[0], expected_validation)
+        self.assertEqual(ptype.validations[1], other_validation)
+        self.assertEqual(2, len(ptype.validations))
+
+    def test_name_matches_glob(self):
+        other_validation = _mock_validation()
+        ptype = pathtype.Path(validator=other_validation,
+                              name_matches_glob="*.txt")
+        expected_validation = validation.NameMatches(glob="*.txt")
+        self.assertEqual(ptype.validations[0], expected_validation)
+        self.assertEqual(ptype.validations[1], other_validation)
+        self.assertEqual(2, len(ptype.validations))
+
+    def test_name_matches_re_or_glob(self):
+        with self.assertRaises(ValueError):
+            pathtype.Path(name_matches_re="test", name_matches_glob="*.txt")
+
 
 class TestPathValidations(unittest.TestCase):
     """
