@@ -6,6 +6,7 @@ from unittest.mock import Mock
 
 import pathtype
 import pathtype.validation as validation
+from .mixins import ArgparseTester
 
 _ValidationCallable = Callable[[pathlib.Path, str], None]
 _imply_exists = ("exists", "writable", "readable", "executable")
@@ -298,7 +299,7 @@ class TestPathCallback(unittest.TestCase):
             ptype("test")
 
 
-class TestSystem(unittest.TestCase):
+class TestSystem(unittest.TestCase, ArgparseTester):
     """
     Test the pathlib.Path inside argparse
     """
@@ -322,5 +323,5 @@ class TestSystem(unittest.TestCase):
 
         # argparse doesn't raise an exception when validation fails, instead
         # it exits the program
-        with self.assertRaises(SystemExit):
+        with self.assert_argparse_error(parser):
             parser.parse_args(["--path", "type"])

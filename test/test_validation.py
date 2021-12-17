@@ -10,6 +10,7 @@ from typing import Callable, Sequence
 
 import pathtype
 import pathtype.validation as validation
+from .mixins import ArgparseTester
 
 
 def _failing_validation(*args):
@@ -21,7 +22,7 @@ def _passing_validation(*args):
     pass
 
 
-class _AccessTestCase(unittest.TestCase):
+class _AccessTestCase(unittest.TestCase, ArgparseTester):
     def assert_pass_if_has_access(self, validator: Callable,
                                   modes: Sequence[int]):
         with tempfile.TemporaryDirectory() as tmp_dir_name:
@@ -102,7 +103,7 @@ class _AccessTestCase(unittest.TestCase):
 
                 # argparse doesn't raise an exception when validation fails, instead
                 # it exits the program
-                with self.assertRaises(SystemExit):
+                with self.assert_argparse_error(parser):
                     parser.parse_args(["--path", str(fail_file)])
             finally:
                 # Make sure that, no matter what, the files will be able to be
@@ -218,7 +219,7 @@ class TestAll(unittest.TestCase):
         self.assertNotEqual(validator1, validator4)
 
 
-class TestExists(unittest.TestCase):
+class TestExists(unittest.TestCase, ArgparseTester):
     def test_does_nothing_if_exists(self):
         validator = validation.Exists()
 
@@ -297,7 +298,7 @@ class TestExists(unittest.TestCase):
 
             # argparse doesn't raise an exception when validation fails, instead
             # it exits the program
-            with self.assertRaises(SystemExit):
+            with self.assert_argparse_error(parser):
                 # The following line will output to STDERR something like
                 # "usage: [...] error: argument --path: path exists". It's
                 # all good.
@@ -310,7 +311,7 @@ class TestExists(unittest.TestCase):
         self.assertEqual(validator1, validator2)
 
 
-class TestNotExists(unittest.TestCase):
+class TestNotExists(unittest.TestCase, ArgparseTester):
     def test_does_nothing_if_doesnt_exist(self):
         validator = validation.NotExists()
 
@@ -392,7 +393,7 @@ class TestNotExists(unittest.TestCase):
 
             # argparse doesn't raise an exception when validation fails, instead
             # it exits the program
-            with self.assertRaises(SystemExit):
+            with self.assert_argparse_error(parser):
                 # The following line will output to STDERR something like
                 # "usage: [...] error: argument --path: path exists". It's
                 # all good.
@@ -501,7 +502,7 @@ class TestExecutable(_AccessTestCase):
         self.assertEqual(validator1, validator2)
 
 
-class TestParentExists(unittest.TestCase):
+class TestParentExists(unittest.TestCase, ArgparseTester):
     def test_doesnt_raise_if_parent_exists(self):
         validator = validation.ParentExists()
 
@@ -643,7 +644,7 @@ class TestParentExists(unittest.TestCase):
             # Should fail if the parent doesn't exist
             # argparse doesn't raise an exception when validation fails, instead
             # it exits the program
-            with self.assertRaises(SystemExit):
+            with self.assert_argparse_error(parser):
                 # The following line will output to STDERR something like
                 # "usage: [...] error: argument --path: path exists". It's
                 # all good.
@@ -656,7 +657,7 @@ class TestParentExists(unittest.TestCase):
         self.assertEqual(validator1, validator2)
 
 
-class TestParentUserWritable(_AccessTestCase):
+class TestParentUserWritable(_AccessTestCase, ArgparseTester):
     def test_does_nothing_if_writable(self):
         validator = validation.ParentUserWritable()
         # Note: we test by creating temporary files. Because of that, we are
@@ -793,7 +794,7 @@ class TestParentUserWritable(_AccessTestCase):
                 sub_dir.chmod(0o500)
                 # argparse doesn't raise an exception when validation fails, instead
                 # it exits the program
-                with self.assertRaises(SystemExit):
+                with self.assert_argparse_error(parser):
                     # The following line will output to STDERR something like
                     # "usage: [...] error: argument --path: path exists". It's
                     # all good.
