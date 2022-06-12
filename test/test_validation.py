@@ -1,12 +1,13 @@
 import argparse
 import contextlib
-import itertools
 import os
 import pathlib
 import re
+import sys
 import tempfile
 import unittest
-from typing import Callable, Sequence
+from typing import Callable, Sequence, Type
+from unittest import mock
 
 import pathtype
 import pathtype.validation as validation
@@ -22,105 +23,112 @@ def _passing_validation(*args):
     pass
 
 
+@contextlib.contextmanager
+def _chdir(path):
+    cwd = os.getcwd()
+    try:
+        os.chdir(path)
+        yield
+    finally:
+        os.chdir(cwd)
+
+
+def _symlink_test(test):
+    return unittest.skipIf(sys.platform.startswith("win"), "Symlink tests skipped on Windows")(test)
+
+
 class _AccessTestCase(unittest.TestCase, ArgparseTester):
-    def assert_pass_if_has_access(self, validator: Callable,
-                                  modes: Sequence[int]):
-        with tempfile.TemporaryDirectory() as tmp_dir_name:
-            test_dir = pathlib.Path(tmp_dir_name) / "tmp_dir"
-            test_file = pathlib.Path(tmp_dir_name) / "tmp_file.txt"
+    def assert_pass_if_has_access(self, validator: Callable, mode_to_test: int):
+        test_file = pathlib.Path("tmp_file.txt")
 
-            test_dir.mkdir()
-            test_file.touch()
+        def mock_access(path, mode, *args, **kwargs):
+            if path == test_file and (mode & mode_to_test):
+                return True
+            return False
 
-            try:
-                for mode, test_obj in itertools.product(modes,
-                                                        (test_dir, test_file)):
-                    test_obj.chmod(mode)
-                    validator(test_obj, str(test_obj.absolute()))
-            finally:
-                # Make sure that, no matter what, the files will be able to be
-                # deleted
-                test_dir.chmod(0o766)
-                test_file.chmod(0o766)
+        with mock.patch("os.access", mock_access):
+            validator(test_file, str(test_file.absolute()))
 
-    def assert_fails_if_doesnt_have_access(self, validator: Callable,
-                                           modes: Sequence[int]):
-        with tempfile.TemporaryDirectory() as tmp_dir_name:
-            test_dir = pathlib.Path(tmp_dir_name) / "tmp_dir"
-            test_file = pathlib.Path(tmp_dir_name) / "tmp_file.txt"
+    def assert_fails_if_doesnt_have_access(self, validator: Callable, mode_to_test: int):
+        test_file = pathlib.Path("tmp_file.txt")
 
-            test_dir.mkdir()
-            test_file.touch()
+        def mock_access(path, mode, *args, **kwargs):
+            if path == test_file and (mode & mode_to_test):
+                return True
+            return False
 
-            try:
-                for mode, test_obj in itertools.product(modes,
-                                                        (test_dir, test_file)):
-                    test_obj.chmod(mode)
-                    with self.assertRaises(argparse.ArgumentTypeError):
-                        validator(test_obj, str(test_obj.absolute()))
-            finally:
-                # Make sure that, no matter what, the files will be able to be
-                # deleted
-                test_dir.chmod(0o766)
-                test_file.chmod(0o766)
+        with mock.patch("os.access", mock_access):
+            validator(test_file, str(test_file))
 
-    def assert_linked_file_fails(self, validator: Callable, mode: int):
+    @contextlib.contextmanager
+    def mock_file_mode(self, test_file: pathlib.Path, mode_to_mock: int):
+        orig_os_access = os.access
+
+        def mock_access(path, mode, *args, **kwargs):
+            if path.resolve().absolute() == test_file.resolve().absolute():
+                return mode & mode_to_mock
+            return orig_os_access(path, mode, *args, **kwargs)
+
+        with mock.patch("os.access", mock_access):
+            yield
+
+    @contextlib.contextmanager
+    def file_stat_error(self, test_file: pathlib.Path):
+        orig_stat = os.stat
+
+        def mock_stat(path, *args, **kwargs):
+            if path == test_file:
+                raise PermissionError
+            return orig_stat(path, *args, **kwargs)
+
+        with mock.patch("pathlib._normal_accessor.stat", mock_stat):
+            yield
+
+    def assert_linked_file_access_fails(self, validator: Callable, mode_to_test: int):
         with tempfile.TemporaryDirectory() as tmp_dir_name:
             tmp_dir_path = pathlib.Path(tmp_dir_name)
             file_path = tmp_dir_path / "file.txt"
-            # File's mode doesn't have the tested access
-            file_path.touch(mode=mode)
 
             # Create a link to the file
             symlink = tmp_dir_path / "link"
             symlink.symlink_to(file_path)
 
-            try:
-                # Should raise an exception
+            orig_os_access = os.access
+
+            def mock_access(path, mode, *args, **kwargs):
+                if path == file_path and (mode & mode_to_test):
+                    return True
+                return orig_os_access(path, mode, *args, **kwargs)
+
+            with mock.patch("os.access", mock_access):
                 with self.assertRaises(argparse.ArgumentTypeError):
                     validator(symlink, str(symlink.absolute()))
-            finally:
-                # Make sure that, no matter what, the file will be able to be
-                # deleted
-                file_path.chmod(0o766)
 
-    def assert_works_in_argparse(self, validator: Callable, pass_mode: int,
-                                 fail_mode: int):
+    def assert_works_in_argparse(self, validator: Callable, pass_with_mode: int, fail_with_mode: int):
         parser = argparse.ArgumentParser()
         parser.add_argument("--path", type=pathtype.Path(validator=validator))
+        pass_file = pathlib.Path("pass.txt")
+        fail_file = pathlib.Path("fail.txt")
 
-        with tempfile.TemporaryDirectory() as tmp_dir_name:
-            pass_file = pathlib.Path(tmp_dir_name) / "pass.txt"
-            pass_file.touch(mode=pass_mode)
+        with self.mock_file_mode(pass_file, pass_with_mode):
+            # When it passes, we should have the path in the args
+            args = parser.parse_args(["--path", str(pass_file)])
+            self.assertEqual(pass_file, args.path)
 
-            fail_file = pathlib.Path(tmp_dir_name) / "fail.txt"
-            fail_file.touch(mode=fail_mode)
-
-            try:
-                # When it passes, we should have the path in the args
-                args = parser.parse_args(["--path", str(pass_file)])
-                self.assertEqual(pass_file, args.path)
-
-                # argparse doesn't raise an exception when validation fails, instead
-                # it exits the program
-                with self.assert_argparse_error(parser):
-                    parser.parse_args(["--path", str(fail_file)])
-            finally:
-                # Make sure that, no matter what, the files will be able to be
-                # deleted
-                pass_file.chmod(0o766)
-                fail_file.chmod(0o766)
+        with self.mock_file_mode(fail_file, fail_with_mode):
+            with self.assert_argparse_error(parser):
+                parser.parse_args(["--path", str(fail_file)])
 
 
 class TestAny(unittest.TestCase):
-    def test_passes_if_any(self):
+    def test_passes_if_any_passes(self):
         any_validator = validation.Any(_failing_validation,
                                        _passing_validation,
                                        _failing_validation)
         # Shouldn't do anything
         any_validator(pathlib.Path("tmp"), "tmp")
 
-    def test_fails_if_none_passes(self):
+    def test_fails_if_none_pass(self):
         any_validator = validation.Any(_failing_validation, _failing_validation)
 
         with self.assertRaises(argparse.ArgumentTypeError):
@@ -129,7 +137,7 @@ class TestAny(unittest.TestCase):
     def test_returns_last_of_supported_exceptions(self):
         """
         If a validator raises one of the exceptions supported by argparse,
-        the any validator should manage it and return the last one
+        the "any" validator should manage it and return the last one.
         """
         last_exception = TypeError("--Test exception--")
 
@@ -174,7 +182,7 @@ class TestAny(unittest.TestCase):
 
 
 class TestAll(unittest.TestCase):
-    def test_passes_if_all(self):
+    def test_passes_if_all_pass(self):
         all_validator = validation.All(_passing_validation,
                                        _passing_validation,
                                        _passing_validation)
@@ -241,26 +249,19 @@ class TestExists(unittest.TestCase, ArgparseTester):
 
     def test_raises_if_not_enough_permissions(self):
         validator = validation.Exists()
+        inside_file = pathlib.Path("file.txt")
 
-        with tempfile.TemporaryDirectory() as tmp_dir_name:
-            # We create a directory and a file within it.
-            inside_dir = pathlib.Path(f"{tmp_dir_name}/dir")
-            inside_dir.mkdir()
-            inside_file = inside_dir / "file.txt"
-            inside_file.touch()
+        def mock_stat(path):
+            if path == inside_file:
+                raise PermissionError
 
-            # But we change the permissions so that the user cannot list the
-            # directory.
-            inside_dir.chmod(0o200)
+        with mock.patch("pathlib._normal_accessor.stat", mock_stat):
+            # It would then not be possible to know if the file
+            # exists. In that case, it should raise an error.
+            with self.assertRaises(argparse.ArgumentTypeError):
+                validator(inside_file, str(inside_file.absolute()))
 
-            try:
-                # It would then not be possible to know if the file
-                # exists. In that case, it should raise an error.
-                with self.assertRaises(argparse.ArgumentTypeError):
-                    validator(inside_file, str(inside_file.absolute()))
-            finally:
-                inside_dir.chmod(0o766)
-
+    @_symlink_test
     def test_symlink_to_nonexistent(self):
         validator = validation.Exists()
 
@@ -272,6 +273,7 @@ class TestExists(unittest.TestCase, ArgparseTester):
             with self.assertRaises(argparse.ArgumentTypeError):
                 validator(symlink, str(symlink.absolute()))
 
+    @_symlink_test
     def test_symlink_to_existent(self):
         validator = validation.Exists()
 
@@ -333,25 +335,17 @@ class TestNotExists(unittest.TestCase, ArgparseTester):
 
     def test_raises_if_not_enough_permissions(self):
         validator = validation.NotExists()
+        inside_file = pathlib.Path("non-existent.txt")
 
-        with tempfile.TemporaryDirectory() as tmp_dir_name:
-            # We create a directory and a file within it.
-            inside_dir = pathlib.Path(f"{tmp_dir_name}/dir")
-            inside_dir.mkdir()
-            inside_file = inside_dir / "non-existent.txt"
+        def mock_stat(path):
+            if path == inside_file:
+                raise PermissionError
 
-            # But we change the permissions so that the user cannot list the
-            # directory.
-            inside_dir.chmod(0o600)
+        with mock.patch("pathlib._normal_accessor.stat", mock_stat):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                validator(inside_file, str(inside_file.absolute()))
 
-            try:
-                # It would then not be possible to know if the file
-                # exists or not. In that case, it should raise an error
-                with self.assertRaises(argparse.ArgumentTypeError):
-                    validator(inside_file, str(inside_file.absolute()))
-            finally:
-                inside_dir.chmod(0o766)
-
+    @_symlink_test
     def test_symlink_to_nonexistent(self):
         # Should NOT raise exception if a symlink exists at the path, but it
         # points to a non-existent file
@@ -365,6 +359,7 @@ class TestNotExists(unittest.TestCase, ArgparseTester):
             # Should not raise any exception
             validator(symlink, str(symlink.absolute()))
 
+    @_symlink_test
     def test_symlink_to_existent(self):
         # Should raise exception if a symlink exists at the path, but it
         # points to an existing file
@@ -409,27 +404,27 @@ class TestNotExists(unittest.TestCase, ArgparseTester):
 class TestReadable(_AccessTestCase):
     def test_does_nothing_if_readable(self):
         validator = validation.UserReadable()
-        # Note: we test by creating temporary files. Because of that, we are
-        # not able to change ownership of the test file, and thus unable to
-        # test when the user is not the owner of the file.
-        modes = (0o700, 0o477)
-        self.assert_pass_if_has_access(validator, modes)
+        test_file = pathlib.Path("test.txt")
+
+        with self.mock_file_mode(test_file, os.R_OK | os.W_OK):
+            validator(test_file, str(test_file))
 
     def test_raises_if_not_readable(self):
         validator = validation.UserReadable()
-        # Note: we test by creating temporary files. Because of that, we are
-        # not able to change ownership of the test file, and thus unable to
-        # test when the user is not the owner of the file.
-        modes = (0o333, 0o077)
-        self.assert_fails_if_doesnt_have_access(validator, modes)
+        test_file = pathlib.Path("test.txt")
 
+        with self.mock_file_mode(test_file, os.W_OK | os.X_OK):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                validator(test_file, str(test_file))
+
+    @_symlink_test
     def test_symlink(self):
         validator = validation.UserReadable()
-        self.assert_linked_file_fails(validator, 0o300)
+        self.assert_linked_file_access_fails(validator, os.W_OK)
 
     def test_inside_argparse(self):
         validator = validation.UserReadable()
-        self.assert_works_in_argparse(validator, 0o400, 0o200)
+        self.assert_works_in_argparse(validator, os.R_OK, os.W_OK)
 
     def test_equality(self):
         validator1 = validation.UserReadable()
@@ -441,27 +436,27 @@ class TestReadable(_AccessTestCase):
 class TestWritable(_AccessTestCase):
     def test_does_nothing_if_writable(self):
         validator = validation.UserWritable()
-        # Note: we test by creating temporary files. Because of that, we are
-        # not able to change ownership of the test file, and thus unable to
-        # test when the user is not the owner of the file.
-        modes = (0o700, 0o277)
-        self.assert_pass_if_has_access(validator, modes)
+        test_file = pathlib.Path("test.txt")
+
+        with self.mock_file_mode(test_file, os.W_OK | os.X_OK):
+            validator(test_file, str(test_file))
 
     def test_raises_if_not_writable(self):
         validator = validation.UserWritable()
-        # Note: we test by creating temporary files. Because of that, we are
-        # not able to change ownership of the test file, and thus unable to
-        # test when the user is not the owner of the file.
-        modes = (0o533, 0o077)
-        self.assert_fails_if_doesnt_have_access(validator, modes)
+        test_file = pathlib.Path("test.txt")
 
+        with self.mock_file_mode(test_file, os.R_OK | os.X_OK):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                validator(test_file, str(test_file))
+
+    @_symlink_test
     def test_symlink(self):
         validator = validation.UserWritable()
-        self.assert_linked_file_fails(validator, 0o500)
+        self.assert_linked_file_access_fails(validator, os.X_OK)
 
     def test_inside_argparse(self):
         validator = validation.UserWritable()
-        self.assert_works_in_argparse(validator, 0o200, 0o500)
+        self.assert_works_in_argparse(validator, os.W_OK, os.X_OK)
 
     def test_equality(self):
         validator1 = validation.UserWritable()
@@ -473,27 +468,27 @@ class TestWritable(_AccessTestCase):
 class TestExecutable(_AccessTestCase):
     def test_does_nothing_if_executable(self):
         validator = validation.UserExecutable()
-        # Note: we test by creating temporary files. Because of that, we are
-        # not able to change ownership of the test file, and thus unable to
-        # test when the user is not the owner of the file.
-        modes = (0o100, 0o377)
-        self.assert_pass_if_has_access(validator, modes)
+        test_file = pathlib.Path("test.txt")
+
+        with self.mock_file_mode(test_file, os.R_OK | os.X_OK):
+            validator(test_file, str(test_file))
 
     def test_raises_if_not_executable(self):
         validator = validation.UserExecutable()
-        # Note: we test by creating temporary files. Because of that, we are
-        # not able to change ownership of the test file, and thus unable to
-        # test when the user is not the owner of the file.
-        modes = (0o633, 0o077)
-        self.assert_fails_if_doesnt_have_access(validator, modes)
+        test_file = pathlib.Path("test.txt")
 
+        with self.mock_file_mode(test_file, os.R_OK | os.W_OK):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                validator(test_file, str(test_file))
+
+    @_symlink_test
     def test_symlink(self):
         validator = validation.UserExecutable()
-        self.assert_linked_file_fails(validator, 0o600)
+        self.assert_linked_file_access_fails(validator, os.R_OK)
 
     def test_inside_argparse(self):
         validator = validation.UserExecutable()
-        self.assert_works_in_argparse(validator, 0o300, 0o200)
+        self.assert_works_in_argparse(validator, os.X_OK, os.R_OK)
 
     def test_equality(self):
         validator1 = validation.UserExecutable()
@@ -502,7 +497,7 @@ class TestExecutable(_AccessTestCase):
         self.assertEqual(validator1, validator2)
 
 
-class TestParentExists(unittest.TestCase, ArgparseTester):
+class TestParentExists(_AccessTestCase):
     def test_doesnt_raise_if_parent_exists(self):
         validator = validation.ParentExists()
 
@@ -527,26 +522,13 @@ class TestParentExists(unittest.TestCase, ArgparseTester):
 
     def test_raises_if_not_enough_permissions(self):
         validator = validation.ParentExists()
+        test_file = pathlib.Path("sub-dir/my-file.txt")
 
-        with tempfile.TemporaryDirectory() as tmp_dir_name:
-            # We create a directory with another directory within it.
-            main_dir = pathlib.Path(f"{tmp_dir_name}/dir")
-            main_dir.mkdir()
-            sub_dir = main_dir / "sub-dir"
-            test_file = sub_dir / "my-file.txt"
+        with self.file_stat_error(test_file.parent):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                validator(test_file, str(test_file))
 
-            # But we change the permissions so that the user cannot list the
-            # directory
-            main_dir.chmod(0o600)
-
-            try:
-                # It would then not be possible to check the existence of the
-                # test file's parent directory
-                with self.assertRaises(argparse.ArgumentTypeError):
-                    validator(test_file, str(test_file))
-            finally:
-                main_dir.chmod(0o766)
-
+    @_symlink_test
     def test_symlink_in_parents(self):
         """
         Test that symbolic links in the path are resolved when determining the
@@ -581,6 +563,7 @@ class TestParentExists(unittest.TestCase, ArgparseTester):
             finally:
                 orig_dir.parent.chmod(0o766)
 
+    @_symlink_test
     def test_path_is_symlink(self):
         """
         Test that symbolic links in the path are resolved when determining the
@@ -627,28 +610,27 @@ class TestParentExists(unittest.TestCase, ArgparseTester):
                 validator(root_dir, str(root_dir))
 
     def test_inside_argparse(self):
-        parser = argparse.ArgumentParser()
         validator = validation.ParentExists()
+        parser = argparse.ArgumentParser()
         parser.add_argument("--path", type=pathtype.Path(validator=validator))
+        cwd = os.getcwd()
 
-        with tempfile.TemporaryDirectory() as tmp_dir_name:
-            sub_dir = pathlib.Path(tmp_dir_name) / "sub-dir"
-            sub_dir.mkdir()
-            # When the parent exists, we should then have the path in the
-            # args
+        tmp_dir = tempfile.TemporaryDirectory()
+        tmp_dir_name = tmp_dir.name
+        try:
             os.chdir(tmp_dir_name)
-            expected = pathlib.Path(sub_dir.name)
-            args = parser.parse_args(["--path", str(expected)])
-            self.assertEqual(expected, args.path)
 
-            # Should fail if the parent doesn't exist
-            # argparse doesn't raise an exception when validation fails, instead
-            # it exits the program
-            with self.assert_argparse_error(parser):
-                # The following line will output to STDERR something like
-                # "usage: [...] error: argument --path: path exists". It's
-                # all good.
+            sub_dir = pathlib.Path("sub-dir")
+            sub_dir.mkdir()
+
+            args = parser.parse_args(["--path", str(sub_dir)])
+            self.assertEqual(sub_dir, args.path)
+
+            with self.assertRaises(SystemExit):
                 parser.parse_args(["--path", "non-existent/sub-file"])
+        finally:
+            os.chdir(cwd)
+            tmp_dir.cleanup()
 
     def test_equality(self):
         validator1 = validation.ParentExists()
@@ -660,56 +642,22 @@ class TestParentExists(unittest.TestCase, ArgparseTester):
 class TestParentUserWritable(_AccessTestCase, ArgparseTester):
     def test_does_nothing_if_writable(self):
         validator = validation.ParentUserWritable()
-        # Note: we test by creating temporary files. Because of that, we are
-        # not able to change ownership of the test file, and thus unable to
-        # test when the user is not the owner of the file.
-        modes = (0o700, 0o277)
+        parent_dir = pathlib.Path("parent")
+        test_file = parent_dir / "test.txt"
 
-        with tempfile.TemporaryDirectory() as tmp_dir_name:
-            parent_dir = pathlib.Path(tmp_dir_name) / "parent"
-            other_dir = pathlib.Path(tmp_dir_name) / "other_dir"
-            test_file = pathlib.Path("../parent/file.txt")
-
-            parent_dir.mkdir()
-            other_dir.mkdir()
-            os.chdir(other_dir)
-
-            try:
-                for mode in modes:
-                    parent_dir.chmod(mode)
-                    validator(test_file, str(test_file))
-            finally:
-                # Make sure that, no matter what, the files will be able to be
-                # deleted
-                parent_dir.chmod(0o766)
+        with self.mock_file_mode(parent_dir, os.W_OK | os.X_OK):
+            validator(test_file, str(test_file))
 
     def test_raises_if_not_writable(self):
         validator = validation.ParentUserWritable()
-        # Note: we test by creating temporary files. Because of that, we are
-        # not able to change ownership of the test file, and thus unable to
-        # test when the user is not the owner of the file.
-        modes = (0o557, 0o140)
+        parent_dir = pathlib.Path("parent")
+        test_file = parent_dir / "test.txt"
 
-        with tempfile.TemporaryDirectory() as tmp_dir_name:
-            parent_dir = pathlib.Path(tmp_dir_name) / "parent"
-            other_dir = pathlib.Path(tmp_dir_name) / "other_dir"
-            test_file = pathlib.Path("../parent/file.txt")
+        with self.mock_file_mode(parent_dir, os.R_OK | os.X_OK):
+            with self.assertRaises(argparse.ArgumentTypeError):
+                validator(test_file, str(test_file))
 
-            parent_dir.mkdir()
-            other_dir.mkdir()
-            (parent_dir / test_file.name).touch()
-            os.chdir(other_dir)
-
-            try:
-                for mode in modes:
-                    parent_dir.chmod(mode)
-                    with self.assertRaises(argparse.ArgumentTypeError):
-                        validator(test_file, str(test_file))
-            finally:
-                # Make sure that, no matter what, the files will be able to be
-                # deleted
-                parent_dir.chmod(0o766)
-
+    @_symlink_test
     def test_symlink_in_parents(self):
         """
         Test that symbolic links in the path are resolved when determining the
@@ -742,6 +690,7 @@ class TestParentUserWritable(_AccessTestCase, ArgparseTester):
             finally:
                 orig_dir.chmod(0o766)
 
+    @_symlink_test
     def test_path_is_symlink(self):
         """
         Test that symbolic links in the path are resolved when determining the
@@ -776,31 +725,31 @@ class TestParentUserWritable(_AccessTestCase, ArgparseTester):
                 orig_dir.chmod(0o766)
 
     def test_inside_argparse(self):
-        parser = argparse.ArgumentParser()
         validator = validation.ParentUserWritable()
+        parser = argparse.ArgumentParser()
         parser.add_argument("--path", type=pathtype.Path(validator=validator))
+        cwd = os.getcwd()
 
-        with tempfile.TemporaryDirectory() as tmp_dir_name:
-            sub_dir = pathlib.Path(tmp_dir_name) / "sub-dir"
-            test_file = pathlib.Path("sub-dir/test_file.txt")
+        tmp_dir = tempfile.TemporaryDirectory()
+        tmp_dir_name = tmp_dir.name
+
+        try:
+            os.chdir(tmp_dir_name)
+
+            # Since we create the sub-dir in the temp directory, it will be writable by the user
+            sub_dir = pathlib.Path("sub-dir")
+            test_file = sub_dir / "test_file.txt"
             sub_dir.mkdir()
             # When the parent is writable, we should be able to extract the file
-            os.chdir(tmp_dir_name)
             args = parser.parse_args(["--path", str(test_file)])
             self.assertEqual(test_file, args.path)
 
-            try:
-                # Should fail if the parent is not writable
-                sub_dir.chmod(0o500)
-                # argparse doesn't raise an exception when validation fails, instead
-                # it exits the program
-                with self.assert_argparse_error(parser):
-                    # The following line will output to STDERR something like
-                    # "usage: [...] error: argument --path: path exists". It's
-                    # all good.
+            with self.mock_file_mode(sub_dir, os.R_OK | os.X_OK):
+                with self.assertRaises(SystemExit):
                     parser.parse_args(["--path", str(test_file)])
-            finally:
-                sub_dir.chmod(0o766)
+        finally:
+            os.chdir(cwd)
+            tmp_dir.cleanup()
 
     def test_equality(self):
         validator1 = validation.ParentUserWritable()
@@ -809,7 +758,118 @@ class TestParentUserWritable(_AccessTestCase, ArgparseTester):
         self.assertEqual(validator1, validator2)
 
 
-class TestNameMatches(unittest.TestCase):
+class _PatternMatcherTestCase(unittest.TestCase):
+    @property
+    def _matcher(self) -> Type[validation.PatternMatches]:
+        raise NotImplemented
+
+    def _test_re_patterns(self, file_path: pathlib.Path,
+                          valid_patterns: Sequence[str],
+                          invalid_patterns: Sequence[str]):
+        for valid_pattern in valid_patterns:
+            with self.subTest(type="valid", pattern=valid_pattern):
+                # Raw string
+                validator = self._matcher(valid_pattern)
+                # Should not raise any error
+                validator(file_path, str(file_path))
+
+                # Compiled regular expression
+                validator = self._matcher(re.compile(valid_pattern))
+                # Should not raise any error
+                validator(file_path, str(file_path))
+
+        for invalid_pattern in invalid_patterns:
+            with self.subTest(type="invalid", pattern=invalid_pattern):
+                # Raw string
+                validator = self._matcher(invalid_pattern)
+                # Should raise an error
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    validator(file_path, str(file_path))
+
+                # Compiled regular expression
+                validator = self._matcher(re.compile(invalid_pattern))
+                # Should raise an error
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    validator(file_path, str(file_path))
+
+    def _test_glob_patterns(self, file_path: pathlib.Path,
+                            valid_globs: Sequence[str],
+                            invalid_globs: Sequence[str]):
+
+        for valid_glob in valid_globs:
+            with self.subTest(type="valid", pattern=valid_glob):
+                # Raw string
+                validator = self._matcher(glob=valid_glob)
+                # Should not raise any error
+                validator(file_path, str(file_path))
+
+        for invalid_glob in invalid_globs:
+            with self.subTest(type="invalid", pattern=invalid_glob):
+                # Raw string
+                validator = self._matcher(glob=invalid_glob)
+                # Should raise an error
+                with self.assertRaises(argparse.ArgumentTypeError):
+                    validator(file_path, str(file_path))
+
+    def test_raises_if_no_pattern_and_no_glob(self):
+        with self.assertRaises(ValueError):
+            self._matcher()
+
+    def test_raises_if_both_pattern_and_glob(self):
+        with self.assertRaises(ValueError):
+            self._matcher("pattern", "glob")
+
+    def test_equality(self):
+        # Test with string pattern
+
+        validator_base = self._matcher("test")
+        validator_equal = self._matcher("test")
+        validator_ne = self._matcher("test2")
+
+        self.assertEqual(validator_base, validator_base)
+        self.assertEqual(validator_base, validator_equal)
+        self.assertNotEqual(validator_base, validator_ne)
+
+        # Test with compiled pattern.
+        #
+        # Note: When creating a new pattern instance using the same pattern
+        # string as another pattern instance, Python will generally reuse the
+        # same instance instead of creating a new instance (see creation of
+        # `pattern1` and `pattern2` below). It thus prevents us to create
+        # different instances of equal patterns to then compare them. To
+        # prevent the caching, we use re.DEBUG. The debug mode has a side
+        # effect of outputting compiled patterns on stdout after compilation.
+        # To avoid those messages, we temporarily catch and dismiss any
+        # output to stdout.
+        with contextlib.redirect_stdout(None):
+            pattern1 = re.compile("test", re.DEBUG)
+            pattern2 = re.compile("test", re.DEBUG)
+        pattern3 = re.compile("test", re.IGNORECASE)
+        validator_base = self._matcher(pattern1)
+        validator_equal = self._matcher(pattern2)
+        validator_ne = self._matcher(pattern3)
+
+        self.assertEqual(validator_base, validator_base)
+        self.assertEqual(validator_base, validator_equal)
+        self.assertNotEqual(validator_base, validator_ne)
+
+        # Test with glob pattern
+
+        validator_base = self._matcher(glob="*.test")
+        validator_equal = self._matcher(glob="*.test")
+        validator_ne = self._matcher(glob="*.other")
+
+        self.assertEqual(validator_base, validator_base)
+        self.assertEqual(validator_base, validator_equal)
+        self.assertNotEqual(validator_base, validator_ne)
+
+
+class TestNameMatches(_PatternMatcherTestCase):
+
+    @property
+    def _matcher(self) -> Type[validation.PatternMatches]:
+        return validation.NameMatches
+
     def test_with_re_pattern(self):
         file_path = pathlib.Path("path/to/my_file_123.txt")
 
@@ -826,31 +886,7 @@ class TestNameMatches(unittest.TestCase):
             "/my_file"
         )
 
-        for valid_pattern in valid_patterns:
-            with self.subTest(type="valid", pattern=valid_pattern):
-                # Raw string
-                validator = validation.NameMatches(valid_pattern)
-                # Should not raise any error
-                validator(file_path, str(file_path))
-
-                # Compiled regular expression
-                validator = validation.NameMatches(re.compile(valid_pattern))
-                # Should not raise any error
-                validator(file_path, str(file_path))
-
-        for invalid_pattern in invalid_patterns:
-            with self.subTest(type="invalid", pattern=invalid_pattern):
-                # Raw string
-                validator = validation.NameMatches(invalid_pattern)
-                # Should raise an error
-                with self.assertRaises(argparse.ArgumentTypeError):
-                    validator(file_path, str(file_path))
-
-                # Compiled regular expression
-                validator = validation.NameMatches(re.compile(invalid_pattern))
-                # Should raise an error
-                with self.assertRaises(argparse.ArgumentTypeError):
-                    validator(file_path, str(file_path))
+        self._test_re_patterns(file_path, valid_patterns, invalid_patterns)
 
     def test_with_glob(self):
         file_path = pathlib.Path("path/to/my_file_123.txt")
@@ -870,71 +906,94 @@ class TestNameMatches(unittest.TestCase):
             "*.t",
         )
 
-        for valid_glob in valid_globs:
-            with self.subTest(type="valid", pattern=valid_glob):
-                # Raw string
-                validator = validation.NameMatches(glob=valid_glob)
-                # Should not raise any error
-                validator(file_path, str(file_path))
-
-        for invalid_glob in invalid_globs:
-            with self.subTest(type="invalid", pattern=invalid_glob):
-                # Raw string
-                validator = validation.NameMatches(glob=invalid_glob)
-                # Should raise an error
-                with self.assertRaises(argparse.ArgumentTypeError):
-                    validator(file_path, str(file_path))
-
-    def test_raises_if_no_pattern_and_no_glob(self):
-        with self.assertRaises(ValueError):
-            validation.NameMatches()
-
-    def test_raises_if_both_pattern_and_glob(self):
-        with self.assertRaises(ValueError):
-            validation.NameMatches("pattern", "glob")
+        self._test_glob_patterns(file_path, valid_globs, invalid_globs)
 
     def test_raises_if_invalid_pattern(self):
         with self.assertRaises(ValueError):
             # Invalid RE: missing a right ")"
             validation.NameMatches("((invalid)")
 
-    def test_equality(self):
-        # Test with string pattern
 
-        validator_base = validation.NameMatches("test")
-        validator_equal = validation.NameMatches("test")
-        validator_ne = validation.NameMatches("test2")
+class TestPathMatches(_PatternMatcherTestCase):
 
-        self.assertEqual(validator_base, validator_base)
-        self.assertEqual(validator_base, validator_equal)
-        self.assertNotEqual(validator_base, validator_ne)
+    @property
+    def _matcher(self) -> Type[validation.PatternMatches]:
+        return validation.PathMatches
 
-        # Test with compiled pattern
+    def test_with_re_pattern(self):
+        # Should work even if the path doesn't exist (no error raised)
+        validator = validation.PathMatches("test")
+        path = pathlib.Path("../non-existent/directory/to/test/my_file.txt")
+        validator(path, str(path))
+        # Windows style
+        path = pathlib.Path(r"..\non-existent\directory\to\test\my_file.txt")
+        validator(path, str(path))
 
-        # We use re.DEBUG to prevent caching of compiled patterns. If it's not
-        # there, then `pattern1 is pattern2` will generally be true, preventing
-        # us from comparing validations using equal but different patterns.
-        # Note that the debug mode has a side effect of outputting compiled
-        # patterns on stdout after compilation. To avoid those messages,
-        # we temporarily catch and dismiss any output to stdout.
-        with contextlib.redirect_stdout(None):
-            pattern1 = re.compile("test", re.DEBUG)
-            pattern2 = re.compile("test", re.DEBUG)
-        pattern3 = re.compile("test", re.IGNORECASE)
-        validator_base = validation.NameMatches(pattern1)
-        validator_equal = validation.NameMatches(pattern2)
-        validator_ne = validation.NameMatches(pattern3)
+        file_path = pathlib.Path("path/to/my_file_123.txt")
+        with tempfile.TemporaryDirectory() as tmp_dir, _chdir(tmp_dir):
+            tmp_dir_path = pathlib.Path(tmp_dir)
 
-        self.assertEqual(validator_base, validator_base)
-        self.assertEqual(validator_base, validator_equal)
-        self.assertNotEqual(validator_base, validator_ne)
+            # Validation should pass when using patterns in the following list
+            valid_patterns = (
+                tmp_dir_path.name,
+                str(tmp_dir_path.absolute()),
+                tmp_dir_path.name + "/path",
+                "^.+/[^/]+_[0-9]+",
+                "my_file_123.txt",
+                ".txt",
+                ".txt$"
+            )
 
-        # Test with glob pattern
+            # Validation shouldn't pass when using patterns in the following list
+            invalid_patterns = (
+                "^/path",
+                "^my_file"
+            )
+            self._test_re_patterns(file_path, valid_patterns, invalid_patterns)
 
-        validator_base = validation.NameMatches(glob="*.test")
-        validator_equal = validation.NameMatches(glob="*.test")
-        validator_ne = validation.NameMatches(glob="*.other")
+            # Test with up-level references
+            validator = validation.PathMatches("dir1/dir3")
+            path = pathlib.Path("dir1/dir2/../dir3/file")
+            validator(path, str(path))
 
-        self.assertEqual(validator_base, validator_base)
-        self.assertEqual(validator_base, validator_equal)
-        self.assertNotEqual(validator_base, validator_ne)
+    def test_with_glob(self):
+        # Should work even if the path doesn't exist (no error raised)
+        validator = validation.PathMatches(glob="*[\\/]to[\\/]*[\\/]*.txt")
+        test_path = "../non-existent/directory/to/test/my_file.txt"
+        # Linux
+        path = pathlib.PurePosixPath(test_path)
+        validator(path, str(path))
+        # Windows
+        path = pathlib.PureWindowsPath(test_path.replace("/", "\\"))
+        validator(path, str(path))
+
+        file_path = pathlib.Path("path/to/my_file_123.txt")
+        with tempfile.TemporaryDirectory() as tmp_dir, _chdir(tmp_dir):
+            tmp_dir_path = pathlib.Path(tmp_dir)
+
+            # Validation should pass when using globs in the following list
+            valid_globs = (
+                tmp_dir + "/*.txt",
+                f"*/{tmp_dir_path.name}/path/*/*.tx?",
+                "*.txt",
+                "*/my_file*",
+                "*/my_file_12?.txt",
+                "*/my_file_[123]*",
+                r"*\my_file_[123]*",  # Windows style
+            )
+
+            # Validation shouldn't pass when using globs in the following list
+            invalid_globs = (
+                "*/not/my_file_123.txt",
+                r"*\not\my_file_123.txt",  # Windows style
+            )
+
+            self._test_glob_patterns(file_path, valid_globs, invalid_globs)
+
+            # Test with up-level references
+            validator = validation.PathMatches("dir1/dir3")
+            path = pathlib.Path("dir1/dir2/../dir3/file")
+            validator(path, str(path))
+            # Same, but Windows style Path
+            path = pathlib.PureWindowsPath("dir1\\dir2\\..\\dir3\\file")
+            validator(path, str(path))

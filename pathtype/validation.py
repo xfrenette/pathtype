@@ -1,3 +1,4 @@
+import abc
 import argparse
 import fnmatch
 import os
@@ -352,7 +353,77 @@ class ParentUserWritable(_SimpleValidation):
                                              f"writable: {arg}")
 
 
-class NameMatches:
+class PatternMatches(abc.ABC):
+    """
+    Abstract class to do pattern matching. See specific implementations (like
+    NameMatches or PathMatches) for thorough documentation.
+
+    TODO: ajouter commentaire que si on veut supporter les chemins Windows comme Linux, il faut que l'expression
+        régulière supporte les deux (ex: "[\\/]dir[\\/]dir"
+    """
+
+    def __init__(self, pattern: Optional[Union[str, Pattern]] = None,
+                 glob: Optional[str] = None):
+        self.pattern = pattern
+        self.glob = self.glob = glob
+
+        if isinstance(pattern, str):
+            try:
+                self.pattern = re.compile(pattern)
+            except _RE_Error:
+                raise ValueError(f"Could not compile pattern \"{pattern}\" into"
+                                 f" a regular expression object")
+
+        nb_none_patterns = sum(attr is None for attr in (self.pattern, self.glob))
+        if nb_none_patterns != 1:
+            raise ValueError("You must specify a pattern or a glob (only one)")
+
+    @abc.abstractmethod
+    def _get_subject_string(self, path: pathlib.PurePath, arg: str) -> str:
+        """
+        Return the string in which we have to perform the pattern search.
+
+        :param path: Path we want to validate
+        :param arg: Raw string value of the argument
+        :return: String in which we want to search
+        """
+        raise NotImplemented
+
+    def __call__(self, path: pathlib.PurePath, arg: str):
+        """
+        :param path: Path we want to validate
+        :param arg: Raw string value of the argument
+        """
+        subject = self._get_subject_string(path, arg)
+        not_found = False
+        message_match = ""
+
+        if self.pattern is not None:
+            if self.pattern.search(subject) is None:
+                not_found = True
+                message_match = f"pattern \"{self.pattern.pattern}\""
+        else:
+            if not fnmatch.fnmatch(subject, self.glob):
+                not_found = True
+                message_match = f"glob \"{self.glob}\""
+
+        if not_found:
+            raise argparse.ArgumentTypeError(f"Cannot find {message_match}"
+                                             f" in {subject}")
+
+    def __eq__(self, other: "PatternMatches"):
+        if self is other:
+            return True
+
+        if isinstance(other, type(self)):
+            if self.pattern is not None:
+                return self.pattern == other.pattern
+            return self.glob == other.glob
+
+        return NotImplemented
+
+
+class NameMatches(PatternMatches):
     """
     Validator that checks that the name part of the path matches a pattern.
 
@@ -379,51 +450,47 @@ class NameMatches:
     :param glob: Glob name pattern
     """
 
-    def __init__(self, pattern: Optional[Union[str, Pattern]] = None,
-                 glob: Optional[str] = None):
-        self.pattern = pattern
-        self.glob = self.glob = glob
+    def _get_subject_string(self, path: pathlib.Path, arg: str) -> str:
+        return path.name
 
-        if isinstance(pattern, str):
-            try:
-                self.pattern = re.compile(pattern)
-            except _RE_Error as e:
-                raise ValueError(f"Could not compile pattern \"{pattern}\" into"
-                                 f" a regular expression object")
 
-        nb_none_patterns = sum(attr is None for attr in (self.pattern, self.glob))
-        if nb_none_patterns != 1:
-            raise ValueError("You must specify a pattern or a glob (only one)")
+class PathMatches(PatternMatches):
+    """
+    Validator that checks that the absolute path matches a pattern.
 
-    def __call__(self, path: pathlib.Path, arg: str):
-        """
-        :param path: Path whose parent we want to validate
-        :param arg: Raw string value of the argument
-        """
-        name = path.name
-        not_found = False
-        message_match = ""
+    The path is first made absolute before checking if it matches the
+    pattern. The whole path is used to compare to the pattern.
 
-        if self.pattern is not None:
-            if self.pattern.search(name) is None:
-                not_found = True
-                message_match = f"pattern \"{self.pattern.pattern}\""
-        else:
-            if not fnmatch.fnmatch(name, self.glob):
-                not_found = True
-                message_match = f"glob \"{self.glob}\""
+    The `pattern` is either a compiled regular expression, or a regular
+    expression pattern string. The pattern will be searched anywhere in the
+    name. So if it doesn't start with the "beginning of line" character
+    (`^`), it can match anywhere. For example, the pattern `"test"` would
+    match the path `../path/to/a/test/file.txt`, while the pattern
+    `"^test"` would not.
 
-        if not_found:
-            raise argparse.ArgumentTypeError(f"Name part of path ({name}) "
-                                             f"doesn't match {message_match}")
+    Instead of a regular expression pattern, you can pass a glob pattern as
+    the `glob` argument. Glob patterns are [described here](
+    https://docs.python.org/3/library/fnmatch.html).
 
-    def __eq__(self, other: "NameMatches"):
-        if self is other:
-            return True
+    Symbolic links are not followed. So if the path is a symbolic link,
+    the path of the link will be checked, not the path of the linked
+    file.This validator compares the whole absolute path. If you want to
+    check only the file name (the last part), use NameMatches.
 
-        if isinstance(other, type(self)):
-            if self.pattern is not None:
-                return self.pattern == other.pattern
-            return self.glob == other.glob
+    You cannot specify both a `pattern` and a `glob`, but you must specify
+    one of them. A `ValueError` would be raised in other cases.
 
-        return NotImplemented
+    Note: this validator doesn't require the path to point to an existing
+    file. But if it is called with a relative path ( ex: "relative/path" or
+    "../parent/relative/path"), the path is made absolute relative to the
+    current working directory (CWD). If the CWD cannot be determined (ex: the
+    current directory doesn't exist anymore), a FileNotFoundError may be
+    raised.
+
+    :param pattern: String or compiled regular expression path pattern
+    :param glob: Glob path pattern
+    """
+
+    def _get_subject_string(self, path: pathlib.Path, arg: str) -> str:
+        subject = os.path.abspath(path)
+        return subject.replace("\\", "/")
