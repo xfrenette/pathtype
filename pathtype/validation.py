@@ -4,7 +4,7 @@ import fnmatch
 import os
 import pathlib
 import re
-from typing import Callable, Iterable, Union, Pattern, Optional
+from typing import Callable, Iterable, Optional, Pattern, Union
 
 _ValidationCallable = Callable[[pathlib.Path, str], None]
 _Validations = Union[_ValidationCallable, Iterable[_ValidationCallable]]
@@ -492,5 +492,4 @@ class PathMatches(PatternMatches):
     """
 
     def _get_subject_string(self, path: pathlib.Path, arg: str) -> str:
-        subject = os.path.abspath(path)
-        return subject.replace("\\", "/")
+        return os.path.abspath(path)
