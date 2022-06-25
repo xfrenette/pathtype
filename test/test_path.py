@@ -215,6 +215,38 @@ class TestPathValidationParameters(unittest.TestCase):
         with self.assertRaises(ValueError):
             pathtype.Path(name_matches_re="test", name_matches_glob="*.txt")
 
+    def test_path_matches_re(self):
+        """
+        Test that the "path_matches_re" validation adds the correction validation,
+        before custom validations.
+        """
+        other_validation = _mock_validation()
+        ptype = pathtype.Path(validator=other_validation, path_matches_re="test")
+        expected_validation = validation.PathMatches("test")
+        self.assertEqual(ptype.validations[0], expected_validation)
+        self.assertEqual(ptype.validations[1], other_validation)
+        self.assertEqual(2, len(ptype.validations))
+
+    def test_path_matches_glob(self):
+        """
+        Test that the "path_matches_glob" validation adds the correction validation,
+        before custom validations.
+        """
+        other_validation = _mock_validation()
+        ptype = pathtype.Path(validator=other_validation, path_matches_glob="*.txt")
+        expected_validation = validation.PathMatches(glob="*.txt")
+        self.assertEqual(ptype.validations[0], expected_validation)
+        self.assertEqual(ptype.validations[1], other_validation)
+        self.assertEqual(2, len(ptype.validations))
+
+    def test_path_matches_re_or_glob(self):
+        """
+        Test that specifying both "path_matches_re" and "path_matches_glob" raises an
+        error.
+        """
+        with self.assertRaises(ValueError):
+            pathtype.Path(path_matches_re="test", path_matches_glob="*.txt")
+
 
 class TestPathValidations(unittest.TestCase):
     """

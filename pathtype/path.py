@@ -124,6 +124,15 @@ class Path:
         ``/path/to/my_file.tmp.txt`` is ``my_file.tmp.txt``. If you prefer to
         use regular expressions (ex: "[a-b]+]"), see ``name_matches_re``.
 
+    ``path_matches_re`` (String or compiled regular expression pattern,
+        default: None)
+        Same as ``name_matches_re``, but validates the whole path, not just the name.
+        The full, absolute path is validated, even if just a relative path was supplied.
+
+    ``path_matches_glob`` (String, default: None)
+        Same as ``name_matches_glob``, but validates the whole path, not just the name.
+        The full, absolute path is validated, even if just a relative path was supplied.
+
     **Example**:
 
     >>> import pathtype
@@ -192,6 +201,8 @@ class Path:
        "``parent_exists``", "``ParentExists``"
        "``name_matches_re``", "``NameMatches``"
        "``name_matches_glob``", "``NameMatches``"
+       "``path_matches_re``", "``PathMatches``"
+       "``path_matches_glob``", "``PathMatches``"
 
     For example, if you want to first validate the directory name
     before validating that user has "write" access, you could do it like this:
@@ -231,6 +242,10 @@ class Path:
         compare against the name part of the path. Ignored if None.
     :param name_matches_glob: Glob string to compare against the name part of
         the path. Ignored if None.
+    :param path_matches_re: Regular expression string or compiled pattern to
+        compare against the absolute path. Ignored if None.
+    :param path_matches_glob: Glob string to compare against the absolute the path.
+        Ignored if None.
     """
 
     def __init__(self, *, validator: Optional[_Validations] = None,
@@ -238,7 +253,9 @@ class Path:
                  executable=False, parent_exists=False, creatable=False,
                  writable_or_creatable=False,
                  name_matches_re: Optional[Union[str, Pattern]] = None,
-                 name_matches_glob: Optional[str] = None):
+                 name_matches_glob: Optional[str] = None,
+                 path_matches_re: Optional[Union[str, Pattern]] = None,
+                 path_matches_glob: Optional[str] = None):
         validations = []
 
         if writable or readable or executable:
@@ -288,6 +305,16 @@ class Path:
 
         if name_matches_glob is not None:
             validations.append(val.NameMatches(glob=name_matches_glob))
+
+        if path_matches_re is not None and path_matches_glob is not None:
+            raise ValueError("Cannot use path_matches_re and path_matches_glob "
+                             "at the same time.")
+
+        if path_matches_re is not None:
+            validations.append(val.PathMatches(path_matches_re))
+
+        if path_matches_glob is not None:
+            validations.append(val.PathMatches(glob=path_matches_glob))
 
         # Any custom validation
         if validator is not None:
