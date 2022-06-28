@@ -9,8 +9,8 @@ from typing import Type
 from unittest import mock
 
 import pathtype.validation as validation
-from mixins import AccessTestCase, ArgparseTester, PatternMatcherTestCase
-from utils import access_permission_test, symlink_test, temp_dir_and_enter
+from test.mixins import AccessTestCase, ArgparseTester, PatternMatcherTestCase
+from test.utils import access_permission_test, symlink_test, temp_dir_and_enter
 
 
 def _failing_validation(*args):

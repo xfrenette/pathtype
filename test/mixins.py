@@ -9,7 +9,7 @@ from typing import Callable, Iterator, Optional, Type
 from unittest.mock import Mock, patch
 
 import pathtype.validation as validation
-from utils import temp_dir_and_enter
+from test.utils import temp_dir_and_enter
 
 
 class _ArgparseValidationError(Exception):

@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import pathtype
 import pathtype.validation as validation
-from mixins import ArgparseTester
+from test.mixins import ArgparseTester
 
 _ValidationCallable = Callable[[pathlib.Path, str], None]
 _imply_exists = ("exists", "writable", "readable", "executable")
