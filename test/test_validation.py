@@ -5,7 +5,7 @@ import re
 import stat
 import tempfile
 import unittest
-from typing import Type
+from typing import cast, Type
 from unittest import mock
 
 import pathtype.validation as validation
@@ -397,7 +397,7 @@ class TestParentExists(unittest.TestCase, ArgparseTester):
             root_dir = pathlib.Path(pathlib.Path(tmp_dir_name).root)
             with self.assertRaises(argparse.ArgumentTypeError):
                 validator(root_dir, str(root_dir))
-                
+
     @symlink_test
     def test_symlink_in_parents(self):
         """
@@ -543,7 +543,7 @@ class TestNameMatches(unittest.TestCase, PatternMatcherTestCase):
 
     def test_passes_with_matching_re_pattern(self):
         posix_file_path = pathlib.PurePosixPath("path/to/my_file_123.txt")
-        windows_file_path = pathlib.PureWindowsPath(r"path\to\my_file_123.txt")
+        win_file_path = pathlib.PureWindowsPath(r"path\to\my_file_123.txt")
 
         patterns = (
             "^.+_[0-9]+",
@@ -551,12 +551,12 @@ class TestNameMatches(unittest.TestCase, PatternMatcherTestCase):
             ".txt",
         )
 
-        self.assert_passes_with_patterns(posix_file_path, patterns)
-        self.assert_passes_with_patterns(windows_file_path, patterns)
+        self.assert_passes_with_patterns(cast(pathlib.Path, posix_file_path), patterns)
+        self.assert_passes_with_patterns(cast(pathlib.Path, win_file_path), patterns)
 
     def test_fails_with_non_matching_re_pattern(self):
         posix_file_path = pathlib.PurePosixPath("path/to/my_file_123.txt")
-        windows_file_path = pathlib.PureWindowsPath(r"path\to\my_file_123.txt")
+        win_file_path = pathlib.PureWindowsPath(r"path\to\my_file_123.txt")
 
         patterns = (
             "path",
@@ -566,12 +566,12 @@ class TestNameMatches(unittest.TestCase, PatternMatcherTestCase):
             "^file",
         )
 
-        self.assert_fails_with_patterns(posix_file_path, patterns)
-        self.assert_fails_with_patterns(windows_file_path, patterns)
+        self.assert_fails_with_patterns(cast(pathlib.Path, posix_file_path), patterns)
+        self.assert_fails_with_patterns(cast(pathlib.Path, win_file_path), patterns)
 
     def test_passes_with_matching_glob(self):
         posix_file_path = pathlib.PurePosixPath("path/to/my_file_123.txt")
-        windows_file_path = pathlib.PureWindowsPath(r"C:\path\to\my_file_123.txt")
+        win_file_path = pathlib.PureWindowsPath(r"C:\path\to\my_file_123.txt")
 
         globs = (
             "*.txt",
@@ -580,12 +580,12 @@ class TestNameMatches(unittest.TestCase, PatternMatcherTestCase):
             "my_file_[123]*",
         )
 
-        self.assert_passes_with_globs(posix_file_path, globs)
-        self.assert_passes_with_globs(windows_file_path, globs)
+        self.assert_passes_with_globs(cast(pathlib.Path, posix_file_path), globs)
+        self.assert_passes_with_globs(cast(pathlib.Path, win_file_path), globs)
 
     def test_fails_with_non_matching_glob(self):
         posix_file_path = pathlib.PurePosixPath("path/to/my_file_123.txt")
-        windows_file_path = pathlib.PureWindowsPath(r"path\to\my_file_123.txt")
+        win_file_path = pathlib.PureWindowsPath(r"path\to\my_file_123.txt")
         globs = (
             "my_file",
             "/my_file*",
@@ -593,8 +593,8 @@ class TestNameMatches(unittest.TestCase, PatternMatcherTestCase):
             "*.t",
         )
 
-        self.assert_fails_with_globs(posix_file_path, globs)
-        self.assert_fails_with_globs(windows_file_path, globs)
+        self.assert_fails_with_globs(cast(pathlib.Path, posix_file_path), globs)
+        self.assert_fails_with_globs(cast(pathlib.Path, win_file_path), globs)
 
     def test_raises_if_invalid_pattern(self):
         with self.assertRaises(ValueError):
@@ -630,7 +630,7 @@ class TestPathMatches(unittest.TestCase, PatternMatcherTestCase):
             r"\.txt$",
         )
 
-        self.assert_passes_with_patterns(file_path, patterns)
+        self.assert_passes_with_patterns(cast(pathlib.Path, file_path), patterns)
 
     def test_fails_with_non_matching_re_pattern(self):
         """
@@ -644,13 +644,15 @@ class TestPathMatches(unittest.TestCase, PatternMatcherTestCase):
         else:
             file_path = pathlib.PurePosixPath("/home/dev/path/to/my/file_123.txt")
 
+        # fmt: off
         patterns = (
             re.escape("^/path"),
             re.escape(r"^\\path"),
             "^file"
         )
+        # fmt: on
 
-        self.assert_fails_with_patterns(file_path, patterns)
+        self.assert_fails_with_patterns(cast(pathlib.Path, file_path), patterns)
 
     def test_passes_with_matching_glob(self):
         """
@@ -673,7 +675,7 @@ class TestPathMatches(unittest.TestCase, PatternMatcherTestCase):
             f"*{os.sep}file_[123]*",
         )
 
-        self.assert_passes_with_globs(file_path, globs)
+        self.assert_passes_with_globs(cast(pathlib.Path, file_path), globs)
 
     def test_fails_with_non_matching_glob(self):
         """
@@ -687,8 +689,6 @@ class TestPathMatches(unittest.TestCase, PatternMatcherTestCase):
         else:
             file_path = pathlib.PurePosixPath("/home/dev/path/to/my/file_123.txt")
 
-        globs = (
-            f"*{os.sep}not{os.sep}file_123.txt",
-        )
+        globs = (f"*{os.sep}not{os.sep}file_123.txt",)
 
-        self.assert_fails_with_globs(file_path, globs)
+        self.assert_fails_with_globs(cast(pathlib.Path, file_path), globs)

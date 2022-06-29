@@ -16,7 +16,22 @@ class _ArgparseValidationError(Exception):
     pass
 
 
-class ArgparseTester:
+class _TestMixin:
+    """
+    Class defining attributes mixin classes will have access to if they are added to a
+    test case class.
+
+    It's only used for typing validation. At runtime, this is a noop.
+    """
+
+    assertEqual: Callable
+    assertNotEqual: Callable
+    assertRaises: Callable
+    fail: Callable
+    subTest: Callable
+
+
+class ArgparseTester(_TestMixin):
     """
     Mixin for test case classes that validate the integration in the argparser.
 
@@ -25,9 +40,9 @@ class ArgparseTester:
 
     @contextlib.contextmanager
     def assert_argument_parsing_fails(
-            self,
-            parser: argparse.ArgumentParser,
-            msg: Optional[str] = None,
+        self,
+        parser: argparse.ArgumentParser,
+        msg: Optional[str] = None,
     ):
         """
         Validate that code inside the context manager triggers an argument parsing
@@ -70,13 +85,11 @@ class ArgparseTester:
         except _ArgparseValidationError:
             pass
         finally:
-            if mock_error.call_count == 0:
-                # noinspection PyUnresolvedReferences
+            if mock_error is not None and mock_error.call_count == 0:
                 self.fail(msg)
 
 
-# noinspection PyUnresolvedReferences
-class AccessTestCase(ArgparseTester):
+class AccessTestCase(ArgparseTester, _TestMixin):
     """
     Mixin that offers methods to test a validator on files with specific access
     permissions.
@@ -150,9 +163,7 @@ class AccessTestCase(ArgparseTester):
                 parent_dir.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
     def assert_passes_on_linked_file_with_mode(
-            self,
-            validator: Callable,
-            linked_file_mode: int
+        self, validator: Callable, linked_file_mode: int
     ):
         """
         Assert that the `validator` doesn't fail when used on a link whose linked file
@@ -170,9 +181,7 @@ class AccessTestCase(ArgparseTester):
                 test_file.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
     def assert_fails_on_linked_file_with_mode(
-            self,
-            validator: Callable,
-            linked_file_mode: int
+        self, validator: Callable, linked_file_mode: int
     ):
         """
         Assert that the `validator` fails when used on a link whose linked file
@@ -191,8 +200,7 @@ class AccessTestCase(ArgparseTester):
                 test_file.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
 
-# noinspection PyUnresolvedReferences
-class PatternMatcherTestCase:
+class PatternMatcherTestCase(_TestMixin):
     """
     Mixin defining tests for validators of type "pattern match".
 
@@ -205,12 +213,10 @@ class PatternMatcherTestCase:
         """
         Validation class, inheriting from `validation.PatternMatches`, to test
         """
-        raise NotImplemented
+        raise NotImplementedError
 
     def assert_passes_with_patterns(
-            self,
-            file_path: pathlib.PurePath,
-            patterns: Iterator[str]
+        self, file_path: pathlib.Path, patterns: Iterator[str]
     ):
         """
         Assert that a validator initialized with any of the `patterns` doesn't fail
@@ -232,9 +238,7 @@ class PatternMatcherTestCase:
                 validator(file_path, str(file_path))
 
     def assert_fails_with_patterns(
-            self,
-            file_path: pathlib.PurePath,
-            patterns: Iterator[str]
+        self, file_path: pathlib.Path, patterns: Iterator[str]
     ):
         """
         Assert that a validator initialized with any of the `patterns` fails when
@@ -248,22 +252,16 @@ class PatternMatcherTestCase:
                 # Raw string
                 validator = self._matcher(pattern)
                 # Should raise an error
-                # noinspection PyUnresolvedReferences
                 with self.assertRaises(argparse.ArgumentTypeError):
                     validator(file_path, str(file_path))
 
                 # Compiled regular expression
                 validator = self._matcher(re.compile(pattern))
                 # Should raise an error
-                # noinspection PyUnresolvedReferences
                 with self.assertRaises(argparse.ArgumentTypeError):
                     validator(file_path, str(file_path))
 
-    def assert_passes_with_globs(
-            self,
-            file_path: pathlib.PurePath,
-            globs: Iterator[str]
-    ):
+    def assert_passes_with_globs(self, file_path: pathlib.Path, globs: Iterator[str]):
         """
         Assert that a validator initialized with any of the `globs` doesn't fail
         when executed on `file_path`.
@@ -278,11 +276,7 @@ class PatternMatcherTestCase:
                 # Should not raise any error
                 validator(file_path, str(file_path))
 
-    def assert_fails_with_globs(
-            self,
-            file_path: pathlib.PurePath,
-            globs: Iterator[str]
-    ):
+    def assert_fails_with_globs(self, file_path: pathlib.Path, globs: Iterator[str]):
         """
         Assert that a validator initialized with any of the `globs` fails when
         executed on `file_path`.
@@ -295,7 +289,6 @@ class PatternMatcherTestCase:
                 # Raw string
                 validator = self._matcher(glob=glob)
                 # Should raise an error
-                # noinspection PyUnresolvedReferences
                 with self.assertRaises(argparse.ArgumentTypeError):
                     validator(file_path, str(file_path))
 

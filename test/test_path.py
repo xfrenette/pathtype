@@ -174,7 +174,7 @@ class TestPathValidationParameters(unittest.TestCase):
         other_validation = _mock_validation()
         expected_any = validation.Any(
             validation.All(validation.Exists(), validation.UserWritable()),
-            validation.All(validation.ParentExists(), validation.ParentUserWritable())
+            validation.All(validation.ParentExists(), validation.ParentUserWritable()),
         )
 
         ptype = pathtype.Path(validator=other_validation, writable_or_creatable=True)
@@ -308,6 +308,7 @@ class TestPathCallback(unittest.TestCase):
             # were executed.
             def callback(*_):
                 validations_called.append(label)
+
             return callback
 
         validation1 = _mock_validation(side_effect=validation_callback(1))
