@@ -163,7 +163,7 @@ class TestExists(unittest.TestCase, ArgparseTester):
         validator = validation.Exists()
         inside_file = pathlib.Path("file.txt")
 
-        def mock_stat(path):
+        def mock_stat(path, **kwargs):
             if path == inside_file:
                 raise PermissionError
 
@@ -230,7 +230,7 @@ class TestNotExists(unittest.TestCase, ArgparseTester):
         validator = validation.NotExists()
         inside_file = pathlib.Path("non-existent.txt")
 
-        def mock_stat(path):
+        def mock_stat(path, **kwargs):
             if path == inside_file:
                 raise PermissionError
 
@@ -425,7 +425,7 @@ class TestParentExists(unittest.TestCase, ArgparseTester):
                 with self.assertRaises(argparse.ArgumentTypeError):
                     validator(file_path, str(file_path))
             finally:
-                actual_dir.parent.chmod(stat.S_IWUSR | stat.S_IWUSR | stat.S_IXUSR)
+                actual_dir.parent.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
     @symlink_test
     def test_path_is_symlink(self):
@@ -454,7 +454,7 @@ class TestParentExists(unittest.TestCase, ArgparseTester):
                 with self.assertRaises(argparse.ArgumentTypeError):
                     validator(sym_file_path, str(sym_file_path))
             finally:
-                actual_dir.parent.chmod(stat.S_IWUSR | stat.S_IWUSR | stat.S_IXUSR)
+                actual_dir.parent.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
     def test_equality(self):
         validator1 = validation.ParentExists()
@@ -500,7 +500,7 @@ class TestParentUserWritable(unittest.TestCase, AccessTestCase):
                 with self.assertRaises(argparse.ArgumentTypeError):
                     validator(file_path, str(file_path))
             finally:
-                actual_dir.chmod(stat.S_IWUSR | stat.S_IWUSR | stat.S_IXUSR)
+                actual_dir.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
     @symlink_test
     def test_path_is_symlink(self):
@@ -527,7 +527,7 @@ class TestParentUserWritable(unittest.TestCase, AccessTestCase):
                 with self.assertRaises(argparse.ArgumentTypeError):
                     validator(sym_file_path, str(sym_file_path))
             finally:
-                actual_dir.chmod(stat.S_IWUSR | stat.S_IWUSR | stat.S_IXUSR)
+                actual_dir.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
 
     def test_equality(self):
         validator1 = validation.ParentUserWritable()

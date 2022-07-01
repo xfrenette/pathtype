@@ -1,0 +1,53 @@
+name: code-check
+
+on:
+  - workflow_dispatch
+  - push
+
+jobs:
+  static-analysis:
+    name: Code static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+      - name: Install pip
+        run: python -m pip install --upgrade pip
+      - name: Flake8
+        run: |
+          pip install flake8
+          flake8 .
+      - name: Black
+        run: |
+          pip install black
+          black --check .
+      - name: mypy
+        run: |
+          pip install mypy
+          mypy .
+
+  run-tests:
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        python-version: [ "3.7", "3.8", "3.9", "3.10" ]
+    name: Run tests on ${{ matrix.os }} (Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+      - name: Run all tests
+        run: |
+          python -m unittest
