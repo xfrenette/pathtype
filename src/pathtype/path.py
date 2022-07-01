@@ -267,7 +267,7 @@ class Path:
             creatable = False
 
         if exists and not_exists:
-            raise ValueError("cannot have both exists and not_exists True")
+            raise ValueError("`exists` and `not_exists` cannot both be True")
 
         if exists:
             validations.append(val.Exists())
@@ -298,7 +298,7 @@ class Path:
 
         if name_matches_re is not None and name_matches_glob is not None:
             raise ValueError(
-                "Cannot use name_matches_re and name_matches_glob " "at the same time."
+                "cannot use both `name_matches_re` and `name_matches_glob`"
             )
 
         if name_matches_re is not None:
@@ -309,7 +309,7 @@ class Path:
 
         if path_matches_re is not None and path_matches_glob is not None:
             raise ValueError(
-                "Cannot use path_matches_re and path_matches_glob " "at the same time."
+                "Cannot use both `path_matches_re` and `path_matches_glob`."
             )
 
         if path_matches_re is not None:

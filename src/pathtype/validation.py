@@ -115,10 +115,10 @@ class Exists(_SimpleValidation):
         """
         try:
             if not path.exists():
-                raise argparse.ArgumentTypeError(f"path doesn't exist: {arg}")
+                raise argparse.ArgumentTypeError(f"file doesn't exist ({arg})")
         except PermissionError:
             raise argparse.ArgumentTypeError(
-                f"not enough permissions to validate existence of path: {arg}"
+                f"not enough permissions to validate existence of file ({arg})"
             )
 
 
@@ -144,10 +144,10 @@ class NotExists(_SimpleValidation):
         """
         try:
             if path.exists():
-                raise argparse.ArgumentTypeError(f"path exists: {arg}")
+                raise argparse.ArgumentTypeError(f"file already exists ({arg})")
         except PermissionError:
             raise argparse.ArgumentTypeError(
-                f"not enough permissions to validate existence of path: {arg}"
+                f"not enough permissions to validate existence of file ({arg})"
             )
 
 
@@ -180,7 +180,9 @@ class UserReadable(_SimpleValidation):
         :param arg: Raw string value of the argument
         """
         if not os.access(path, os.R_OK):
-            raise argparse.ArgumentTypeError(f"path is not readable: {arg}")
+            raise argparse.ArgumentTypeError(
+                f"you don't have read permission on file ({arg})"
+            )
 
 
 class UserWritable(_SimpleValidation):
@@ -212,7 +214,9 @@ class UserWritable(_SimpleValidation):
         :param arg: Raw string value of the argument
         """
         if not os.access(path, os.W_OK):
-            raise argparse.ArgumentTypeError(f"path is not writable: {arg}")
+            raise argparse.ArgumentTypeError(
+                f"you don't have write permission on file ({arg})"
+            )
 
 
 class UserExecutable(_SimpleValidation):
@@ -244,7 +248,9 @@ class UserExecutable(_SimpleValidation):
         :param arg: Raw string value of the argument
         """
         if not os.access(path, os.X_OK):
-            raise argparse.ArgumentTypeError(f"path is not executable: {arg}")
+            raise argparse.ArgumentTypeError(
+                f"you don't have execute permission on file ({arg})"
+            )
 
 
 class ParentExists(_SimpleValidation):
@@ -282,17 +288,18 @@ class ParentExists(_SimpleValidation):
 
         if parent == resolved:
             raise argparse.ArgumentTypeError(
-                f"path doesn't have a parent directory: {arg}"
+                f"file doesn't have a parent directory ({arg})"
             )
 
         try:
             if not parent.exists():
                 raise argparse.ArgumentTypeError(
-                    f"parent directory doesn't exist for path: {arg}"
+                    f"file's parent directory doesn't exist ({arg})"
                 )
         except PermissionError:
             raise argparse.ArgumentTypeError(
-                f"not enough permissions to validate existence of parent of path: {arg}"
+                f"not enough permissions to validate existence of file's parent "
+                f"directory ({arg})"
             )
 
 
@@ -349,7 +356,8 @@ class ParentUserWritable(_SimpleValidation):
 
         if not os.access(parent, os.W_OK):
             raise argparse.ArgumentTypeError(
-                f"parent directory is not " f"writable: {arg}"
+                f"you don't have write permission on the file's parent directory "
+                f"({arg})"
             )
 
 
@@ -376,13 +384,12 @@ class PatternMatches(abc.ABC):
                 self.pattern = re.compile(pattern)
             except _RE_Error:
                 raise ValueError(
-                    f'Could not compile pattern "{pattern}" into a regular expression '
-                    f"object"
+                    f"could not compile regular expression pattern ({pattern})"
                 )
 
         nb_none_patterns = sum(attr is None for attr in (self.pattern, self.glob))
         if nb_none_patterns != 1:
-            raise ValueError("You must specify a pattern or a glob (only one)")
+            raise ValueError("you must specify a pattern or a glob (only one)")
 
     @abc.abstractmethod
     def _get_subject_string(self, path: pathlib.Path, arg: str) -> str:
@@ -415,7 +422,7 @@ class PatternMatches(abc.ABC):
 
         if not_found:
             raise argparse.ArgumentTypeError(
-                f"Cannot find {message_match}" f" in {subject}"
+                f"cannot find {message_match} in {subject}"
             )
 
     def __eq__(self, other: object):

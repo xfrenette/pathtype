@@ -136,7 +136,7 @@ class TestPathValidationParameters(unittest.TestCase):
     def test_parent_exists_ignored_with_exists(self):
         """
         Test that the "parent_exists" is ignored if used with "exists" or other
-        validations that imply "exists.
+        validations that imply "exists".
         """
         for other_validation in _imply_exists:
             pathtype_args = {other_validation: True, "parent_exists": True}
