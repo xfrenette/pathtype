@@ -1,96 +1,304 @@
-pathtype: convert client arguments to Path instances
-===
+<h1 style="text-align:center">pathtype<br>
+<span style="font-size: smaller">Validate paths in command line arguments</span></h1>
 
-The *pathtype* Python package makes it easy to convert command line path 
-arguments to [`pathlib.Path`](https://docs.python.org/3/library/pathlib.html) 
-instances. It also provides multiple validations to easily and 
-automatically validate paths when parsing arguments.
 
-The package provides a `Path` class that can be used as `type` with the 
-`argparse` package.
+The *pathtype* Python package makes it simple to validate paths in command line (CLI)
+arguments. It's made to be used with the `argparse` argument parser. It can validate 
+the existence of the file, its permissions, its file name, file extension, etc. With 
+*pathtype*, you keep path arguments validation inside the command line parsing logic,
+away from your core application code.
 
-**Example:**
+Use it as the `type` argument in `parser.add_argument()` to automatically have a CLI 
+path argument validated and returned as a `pathlib.Path` instance.
+
+It works with Python 3.7+, both with Posix and Windows paths.
+
+**Example**
 
 ```python
 import argparse
 import pathtype
 
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--image", required=True,
+        help="Image file to open (PNG, GIF or JPEG supported)",
+        type=pathtype.Path(readable=True, name_matches_re=r"\.(png|jpe?g|gif)$")
+    )
+ 
+    # Path validations are done automatically by calling the next line, no need to 
+    # add code to validate that the path can be read and that it has the correct 
+    # extension. 
+    args = parser.parse_args()
+    
+    # args.image is an instance of pathlib.Path. And since using `readable` implies 
+    # `exists`, we know the file already exists and is readable by the current user.
+    print(args.image.exists())
+    # True
+```
+
+# Installation
+
+*pathtype* requires Python 3.7+.
+
+Install with pip:
+
+```shell
+pip install pathtype
+```
+
+# Usage
+
+## Predefined validations (basic usage)
+
+Using `pathtype.Path` without any arguments simply converts the CLI argument to a 
+`pathlib.Path` instance:
+
+```python
+parser.add_argument(
+  "my_arg", type=pathtype.Path()
+)
+
+args = parser.parse_args()
+print(type(args.my_arg))  # >>> <class 'pathlib.PosixPath'>
+```
+
+But multiple validations are available to have the path validated during CLI arguments 
+parsing. If a validation fails, argument parsing will fail in the usual manner. If 
+it succeeds, the argument will be converted to a `pathlib.Path` instance.
+
+| To validate that...                                                      | use ...                                                        |
+|--------------------------------------------------------------------------|----------------------------------------------------------------|
+| the path points to an existing file or directory                         | `pathtype.Path(exists=True)`                                   |
+| the path does NOT point to an existing file or directory                 | `pathtype.Path(not_exists=True)`                               |
+| the path's parent directory exists                                       | `pathtype.Path(parent_exists=True)`                            |
+| the file can be created (*)                                              | `pathtype.Path(creatable=True)`                                |
+| the file can be created or, if it already exists, it's writable (*)      | `pathtype.Path(writable_or_creatable=True)`                    |
+| the current user has some permissions on the file or directory (*)       | `pathtype.Path(readable=True, writable=True, executable=True)` |
+| the *file name* (the last part of the path) matches a regular expression | `pathtype.Path(name_matches_re=r"\.jpe?g$")`                   |
+| the *file name* matches a glob pattern                                   | `pathtype.Path(name_matches_glob="*.pkl")`                     |
+| the *full* (absolute and normalized) path matches a regular expression   | `pathtype.Path(path_matches_re="/home/.+/logs/?$")`            |
+| the *full* path matches a glob pattern                                   | `pathtype.Path(path_matches_glob="/home/*/*.pkl")`             |
+
+(*) all permission related validations use the current user's permission. For example,
+the `creatable` validation validates that the user running your code has permissions to 
+create the file. Ignored on Windows.
+
+### Combining validations
+
+You can combine multiple validations together.
+
+**Example**
+
+Validate that the path is a text file (*.txt) that doesn't exist yet, but that the 
+current user has permissions to create the file (implies that the parent directory 
+exists):
+
+```python
+parser.add_argument(
+    "--file",
+    type=pathtype.Path(not_exists=True, creatable=True, name_matches_glob="*.txt")
+)
+args = parser.parse_args(["--file", "path/to/my_file.txt"])
+```
+
+# Custom validation (advanced usage)
+
+You can also create your own custom validations (or "validators") and use them alone, 
+or in combination with the predefined validations.
+
+## Making a custom validator
+
+A custom validator is a callable object (generally a function) that has the 
+following signature:
+
+```python
+def validator(path: pathlib.Path, arg: str) -> None
+```
+
+The validator must accept two arguments, `path` and `arg`, that are two views of the 
+original CLI argument. If the original CLI argument was `"../path/to/file"`, then
+`path = pathlib.Path("../path/to/file")` and `arg = "../path/to/file"`.
+
+If the validator considers that its validation failed, it must raise one of the
+following exception:
+
+* `argparse.ArgumentTypeError`
+* `TypeError`
+* `ValueError`
+
+Raising any other type of error won't be nicely handled by ``argparse``.
+
+If its validation passes, it must end without returning anything.
+
+## Using a custom validator
+
+You use the validator by passing it to the `validator` parameter of `pathtype.Path()`.
+
+You can also pass an iterable (ex: a list) of validators, and they will be executed 
+sequentially.
+
+**Example**
+
+The next example creates two (strange) custom validators: one that validates that the 
+file name contains the letter "a", the other validates that the file name doesn't 
+contain the letter "b". The command line argument *--path-1* uses only the first 
+validator, the command line argument *--path-2* uses both.
+
+```python
+def must_have_a(path: pathlib.Path, arg: str):
+    """Custom validator that fails if the file name doesn't contain the letter 'a'."""
+    if "a" not in path.name:
+        raise argparse.ArgumentTypeError('The file name must have the letter "a"')
+
+def must_not_have_b(path: pathlib.Path, arg: str):
+    """Custom validator that fails if the file name contains the letter 'b'."""
+    if "b" in path.name:
+        raise argparse.ArgumentTypeError('The file name must NOT have the letter "b"')
+
+    
 parser = argparse.ArgumentParser()
-
-# Create a new --path argument using the `pathtype.Path` class
-parser.add_argument("--path", type=pathtype.Path())
+parser.add_argument(
+    "--path-1",
+    type=pathtype.Path(validator=must_have_a)
+)
+parser.add_argument(
+    "--path-2",
+    type=pathtype.Path(validator=[must_have_a, must_not_have_b])
+)
 ```
 
-When parsing command line arguments with the above parser, `args.path` will now
-contain a `pathlib.Path` instance initialized with the value of the `--path` 
-argument:
+## Using predefined validations with a custom validator
+
+You can still use any of the predefined validations (as presented in the "basic 
+usage" section) when using a custom validator.
+
+**Example**
+
+The following would validate the existence of the file and run a custom validator.
 
 ```python
-args = parser.parse_args(["--path", "/path/to/my_file.txt"])
-print(args.path.stem)
-# >>> "my_file"
+parser.add_argument(
+    ...
+    type=pathtype.Path(validator=must_have_a, exists=True)
+)
 ```
 
-## Validations
+**Warning:** Validators in `validator` are always run *after* any of the predefined 
+validations. So in the previous example, the existence of the file is validated 
+*first* and only then the custom validator is executed.
 
-It's not doing much just like that. The class can also run various 
-validations on the path or the file the path points to. This moves 
-validation logic from your code to the arguments parsing. Once the parsing 
-completes, you know the path you received passed validations.
+If you need to change the order, you would have to remove `exists=True` and instead
+add an "existence" validator to your list of custom validators, in the order you wish.
 
-For example, you can validate that the path points to an existing file or 
-directory. Running this script:
+But you don't need to recreate validators for any of the predefined validations. They 
+are all available in the `pathtype.validation` module. Just instantiate a class and 
+use it like a custom validator.
+
+**Example**
+
+The following changes the order of validation of the previous example: first the 
+custom validator is executed before validating the existence.
 
 ```python
-parser.add_argument("--path", type=pathtype.Path(exists=True))
-# Try to pass a path to a non-existent file
-args = parser.parse_args(["--path", "/non/existent/file.txt"])
+from pathtype.validation import Exists
+
+exist_validator = Exists()
+
+parser.add_argument(
+    ...
+    type=pathtype.Path(validator=[must_have_a, exist_validator])
+)
 ```
-will end the script with the following error:
-```
-usage: myscript.py [-h] [--path PATH]
-myscript.py: error: argument --path: path doesn't exist: /non/existent/file.txt
-```
 
-For the various predefined validations, see description of the
-``pathtype.Path`` class.
+## Logical combination of validators
 
-### Custom validation
+The classes `pathtype.validation.Any` and `pathtype.validation.All` allow you to create
+validators that are logical combinations of other validators (i.e. *OR* or *AND* 
+expressions).
 
-You can also add your own validation. Pass to the `validator` parameter one 
-or more functions (or callbacks). They will be called in order and if any 
-raises a `argparse.ArgumentTypeError`, `TypeError`, or `ValueError`, the 
-argument parsing will end in error.
+* `Any`: an instance of this class, initialized with a sequence of validators, is a 
+  validator that will pass if *any* of its validators passes, and fail if they all 
+  fail. Equivalent to an *OR* expression.
+* `All`: Similarly, an instance of this class is a validator that will pass if *all* 
+  of its validators pass, and fails if *any* fails. Equivalent to an *AND* expression.
 
-For example, the following custom validation validates that the path is for 
-a file with name `my_file.txt`:
+Those two classes can be used to create complex validation trees.
+
+**Example**
+
+We create a validator that validates that the file name contains "a" *OR* that it 
+doesn't contain "b":
 
 ```python
+from pathtype.validation import Any
+
+or_validator = Any(must_have_a, must_not_have_b)
+
+parser.add_argument(
+    ...
+    type=pathtype.Path(validator=or_validator)
+)
+```
+
+## Complete custom validator example
+
+We want a custom validator that validates that the path is inside the current user's 
+home directory:
+
+```python
+import os.path
 import pathlib
 import argparse
 import pathtype
 
 
-def validate_file_name(path: pathlib.Path, arg: str):
-    if path.name != "my_file.txt":
-        raise argparse.ArgumentTypeError(f"invalid file name ({path.name})")
+def is_inside_home_dir(path: pathlib.Path, arg: str):
+    """Validate that the path is inside the current user's home directory."""
+    expanded_path = os.path.expanduser(path)
+    resolved_path = pathlib.Path(os.path.abspath(expanded_path))
+    user_dir = pathlib.Path.home()
+    # We check that `resolved_path` starts with the same directories as `user_dir`
+    is_child = resolved_path.parts[:len(user_dir.parts)] == user_dir.parts
+    
+    if not is_child:
+        raise argparse.ArgumentTypeError(
+            f"path ({resolved_path}) is not in the user's home directory ({user_dir})"
+        )
 
-parser = argparse.ArgumentParser()
 
-parser.add_argument("--path", type=pathtype.Path(validator=validate_file_name))
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--path",
+        type=pathtype.Path(validator=is_inside_home_dir)
+    )
 
-# We try to parse invalid arguments
-args = parser.parse_args(["--path", "/path/to/image.jpg"])
+    # The following line won't raise any error
+    args = parser.parse_args(["--path", "~/valid/path"])
+    print(repr(args.path))
+    # PosixPath('~/valid/path')
+
+    # The following line will fail since the path is not inside the user's directory
+    args = parser.parse_args(["--path", "/at-root"])
+    # Fails with this message:
+    #   usage: example.py [-h] [--path PATH]
+    #   example.py: error: argument --path: path (/at-root) is not in the user's home directory (/home/user)
 ```
 
-Running this script ends with the following error message:
-```
-usage: myscript.py [-h] [--path PATH]
-myscript.py: error: argument --path: invalid file name (image.jpg)
-```
+# Notes
 
-You can also create more complex validations using the ``validation.Any`` and
-``validation.All`` classes. The first one accepts multiple validations and
-validates as soon as any of its child validations validates. The second also 
-accepts multiple validations and validates only if all of its child 
-validations validate.
+* All paths instances are actually
+  [concrete paths](https://docs.python.org/3/library/pathlib.html#concrete-paths) 
+  (i.e. created with `pathlib.Path()`), 
+  and not pure paths (i.e. `pathlib.PurePath()`). This means that if ran on Windows, 
+  the path argument will be converted to an instance of `pathlib.WindowsPath`, and on 
+  other systems it'll be converted to an instance of `pathlib.PosixPath`. Behavior 
+  may change on different OS's, so it's best not to parse argument across OS's.
+* Validations are run once, during argument parsing. Always remember that, by the 
+  time you actually use the path, some properties of the file may have changed. For 
+  example, let's say you use `pathtype.Path(exists=True)`. Although the file may 
+  exist at the time of argument parsing, another process may delete the file by the 
+  time you actually want to access it. So only use this package as a user-friendly 
+  "first check".
