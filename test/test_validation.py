@@ -5,7 +5,7 @@ import re
 import stat
 import tempfile
 import unittest
-from typing import cast, Type
+from typing import cast, Type, Union
 from unittest import mock
 
 import pathtype.validation as validation
@@ -20,6 +20,13 @@ def _failing_validation(*args):
 def _passing_validation(*args):
     # Do nothing
     pass
+
+
+def _path_in_home_dir(path: Union[str, os.PathLike]) -> bool:
+    path_to_check = pathlib.Path(path)
+    home_dir = pathlib.Path.home()
+    home_dir_parts = home_dir.parts
+    return path_to_check.parts[: len(home_dir_parts)] == home_dir_parts
 
 
 class TestAny(unittest.TestCase):
@@ -692,3 +699,25 @@ class TestPathMatches(unittest.TestCase, PatternMatcherTestCase):
         globs = (f"*{os.sep}not{os.sep}file_123.txt",)
 
         self.assert_fails_with_globs(cast(pathlib.Path, file_path), globs)
+
+    def test_expands_user_dir(self):
+        """If a path contains "~", it's expanded to the user's dir before validation"""
+        actual_user_dir = str(pathlib.Path.home())
+        glob = actual_user_dir + os.sep + "*.txt"
+        matcher = validation.PathMatches(glob=glob)
+        file_path = pathlib.Path("~/test.txt")
+
+        # We make sure to move out of the user's home directory by going to the root
+        cwd = pathlib.Path.cwd()
+        root = cwd.anchor
+
+        try:
+            os.chdir(str(root))
+            if _path_in_home_dir(pathlib.Path.cwd()):
+                self.skipTest(
+                    "Needed to move out of the user's home directory for this test but "
+                    "couldn't."
+                )
+            matcher(file_path, str(file_path))
+        finally:
+            os.chdir(str(cwd))

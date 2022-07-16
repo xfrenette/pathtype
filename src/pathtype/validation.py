@@ -368,7 +368,10 @@ class PatternMatches(abc.ABC):
     """
 
     def __init__(
-        self, pattern: Optional[Union[str, Pattern]] = None, glob: Optional[str] = None
+        self,
+        *,
+        pattern: Optional[Union[str, Pattern]] = None,
+        glob: Optional[str] = None,
     ):
         """
         :param pattern: String or compiled regular expression
@@ -469,8 +472,9 @@ class PathMatches(PatternMatches):
     """
     Validator that checks that the absolute path matches a pattern.
 
-    The path is first made absolute before checking if it matches the pattern. The
-    whole path is used to compare to the pattern.
+    Before comparing the path to the pattern, the path is resolved: it's made
+    absolute and any ".", "..", or "~" is resolved. The pattern is then compared to
+    the resulting path.
 
     The `pattern` is either a compiled regular expression, or a regular expression
     pattern string. The pattern will be searched anywhere in the name. So if it
@@ -498,4 +502,5 @@ class PathMatches(PatternMatches):
     """
 
     def _get_subject_string(self, path: pathlib.Path, arg: str) -> str:
-        return os.path.abspath(path)
+        expanded = os.path.expanduser(path)
+        return os.path.abspath(expanded)
