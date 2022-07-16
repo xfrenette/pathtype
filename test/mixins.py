@@ -228,12 +228,12 @@ class PatternMatcherTestCase(_TestMixin):
         for pattern in patterns:
             with self.subTest(pattern=pattern):
                 # Raw string
-                validator = self._matcher(pattern)
+                validator = self._matcher(pattern=pattern)
                 # Should not raise any error
                 validator(file_path, str(file_path))
 
                 # Compiled regular expression
-                validator = self._matcher(re.compile(pattern))
+                validator = self._matcher(pattern=re.compile(pattern))
                 # Should not raise any error
                 validator(file_path, str(file_path))
 
@@ -250,13 +250,13 @@ class PatternMatcherTestCase(_TestMixin):
         for pattern in patterns:
             with self.subTest(pattern=pattern):
                 # Raw string
-                validator = self._matcher(pattern)
+                validator = self._matcher(pattern=pattern)
                 # Should raise an error
                 with self.assertRaises(argparse.ArgumentTypeError):
                     validator(file_path, str(file_path))
 
                 # Compiled regular expression
-                validator = self._matcher(re.compile(pattern))
+                validator = self._matcher(pattern=re.compile(pattern))
                 # Should raise an error
                 with self.assertRaises(argparse.ArgumentTypeError):
                     validator(file_path, str(file_path))
@@ -304,7 +304,7 @@ class PatternMatcherTestCase(_TestMixin):
         Test initializing the validator raises if we specify both a pattern and a glob.
         """
         with self.assertRaises(ValueError):
-            self._matcher("pattern", "glob")
+            self._matcher(pattern="pattern", glob="glob")
 
     def test_equality(self):
         """
@@ -312,9 +312,9 @@ class PatternMatcherTestCase(_TestMixin):
         """
         # Test with string pattern
 
-        validator_base = self._matcher("test")
-        validator_equal = self._matcher("test")
-        validator_ne = self._matcher("test2")
+        validator_base = self._matcher(pattern="test")
+        validator_equal = self._matcher(pattern="test")
+        validator_ne = self._matcher(pattern="test2")
 
         self.assertEqual(validator_base, validator_base)
         self.assertEqual(validator_base, validator_equal)
@@ -334,9 +334,9 @@ class PatternMatcherTestCase(_TestMixin):
             pattern1 = re.compile("test", re.DEBUG)
             pattern2 = re.compile("test", re.DEBUG)
         pattern3 = re.compile("test", re.IGNORECASE)
-        validator_base = self._matcher(pattern1)
-        validator_equal = self._matcher(pattern2)
-        validator_ne = self._matcher(pattern3)
+        validator_base = self._matcher(pattern=pattern1)
+        validator_equal = self._matcher(pattern=pattern2)
+        validator_ne = self._matcher(pattern=pattern3)
 
         self.assertEqual(validator_base, validator_base)
         self.assertEqual(validator_base, validator_equal)

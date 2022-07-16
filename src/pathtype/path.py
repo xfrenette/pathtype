@@ -302,7 +302,7 @@ class Path:
             )
 
         if name_matches_re is not None:
-            validations.append(val.NameMatches(name_matches_re))
+            validations.append(val.NameMatches(pattern=name_matches_re))
 
         if name_matches_glob is not None:
             validations.append(val.NameMatches(glob=name_matches_glob))
@@ -313,7 +313,7 @@ class Path:
             )
 
         if path_matches_re is not None:
-            validations.append(val.PathMatches(path_matches_re))
+            validations.append(val.PathMatches(pattern=path_matches_re))
 
         if path_matches_glob is not None:
             validations.append(val.PathMatches(glob=path_matches_glob))

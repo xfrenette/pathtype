@@ -190,7 +190,7 @@ class TestPathValidationParameters(unittest.TestCase):
         """
         other_validation = _mock_validation()
         ptype = pathtype.Path(validator=other_validation, name_matches_re="test")
-        expected_validation = validation.NameMatches("test")
+        expected_validation = validation.NameMatches(pattern="test")
         self.assertEqual(ptype.validations[0], expected_validation)
         self.assertEqual(ptype.validations[1], other_validation)
         self.assertEqual(2, len(ptype.validations))
@@ -222,7 +222,7 @@ class TestPathValidationParameters(unittest.TestCase):
         """
         other_validation = _mock_validation()
         ptype = pathtype.Path(validator=other_validation, path_matches_re="test")
-        expected_validation = validation.PathMatches("test")
+        expected_validation = validation.PathMatches(pattern="test")
         self.assertEqual(ptype.validations[0], expected_validation)
         self.assertEqual(ptype.validations[1], other_validation)
         self.assertEqual(2, len(ptype.validations))
@@ -357,11 +357,11 @@ class TestInsideArgparse(unittest.TestCase, ArgparseTester):
         self.assertEqual(expected_path, args.path)
 
     def test_exits_if_validation_raises(self):
-        def validation(*_):
+        def validator(*_):
             raise TypeError("test-error")
 
         parser = argparse.ArgumentParser()
-        parser.add_argument("--path", type=pathtype.Path(validator=validation))
+        parser.add_argument("--path", type=pathtype.Path(validator=validator))
 
         with self.assert_argument_parsing_fails(parser):
             parser.parse_args(["--path", "type"])

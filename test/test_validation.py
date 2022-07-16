@@ -599,7 +599,7 @@ class TestNameMatches(unittest.TestCase, PatternMatcherTestCase):
     def test_raises_if_invalid_pattern(self):
         with self.assertRaises(ValueError):
             # Invalid RE: missing a right ")"
-            validation.NameMatches("((invalid)")
+            validation.NameMatches(pattern="((invalid)")
 
 
 class TestPathMatches(unittest.TestCase, PatternMatcherTestCase):
