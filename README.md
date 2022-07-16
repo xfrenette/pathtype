@@ -21,6 +21,8 @@ import pathtype
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    # We use `pathtype.Path` as the `type` argument to validate that the --image 
+    # argument is a readable image file (checks the file extension).
     parser.add_argument(
         "--image", required=True,
         help="Image file to open (PNG, GIF or JPEG supported)",
@@ -50,8 +52,6 @@ pip install pathtype
 
 # Usage
 
-## Predefined validations (basic usage)
-
 Using `pathtype.Path` without any arguments simply converts the CLI argument to a 
 `pathlib.Path` instance:
 
@@ -64,7 +64,11 @@ args = parser.parse_args()
 print(type(args.my_arg))  # >>> <class 'pathlib.PosixPath'>
 ```
 
-But multiple validations are available to have the path validated during CLI arguments 
+But you will generally also want to run some validations on the properties of the path.
+
+## Predefined validations (basic usage)
+
+Multiple validations are available to have the path validated during CLI arguments 
 parsing. If a validation fails, argument parsing will fail in the usual manner. If 
 it succeeds, the argument will be converted to a `pathlib.Path` instance.
 
@@ -81,7 +85,7 @@ it succeeds, the argument will be converted to a `pathlib.Path` instance.
 | the *full* (absolute and normalized) path matches a regular expression   | `pathtype.Path(path_matches_re="/home/.+/logs/?$")`            |
 | the *full* path matches a glob pattern                                   | `pathtype.Path(path_matches_glob="/home/*/*.pkl")`             |
 
-(*) all permission related validations use the current user's permission. For example,
+(*) All permission related validations use the current user's permission. For example,
 the `creatable` validation validates that the user running your code has permissions to 
 create the file. Ignored on Windows.
 
@@ -181,7 +185,7 @@ The following would validate the existence of the file and run a custom validato
 ```python
 parser.add_argument(
     ...
-    type=pathtype.Path(validator=must_have_a, exists=True)
+    type=pathtype.Path(validator=must_not_have_b, exists=True)
 )
 ```
 
@@ -199,7 +203,8 @@ use it like a custom validator.
 **Example**
 
 The following changes the order of validation of the previous example: first the 
-custom validator is executed before validating the existence.
+custom validator is executed before validating the existence. The latter validator is
+simply an instance of `pathtype.validation.Exists`.
 
 ```python
 from pathtype.validation import Exists
@@ -208,7 +213,7 @@ exist_validator = Exists()
 
 parser.add_argument(
     ...
-    type=pathtype.Path(validator=[must_have_a, exist_validator])
+    type=pathtype.Path(validator=[must_not_have_b, exist_validator])
 )
 ```
 
