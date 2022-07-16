@@ -1,5 +1,5 @@
-<h1 style="text-align:center">pathtype<br>
-<span style="font-size: smaller">Validate paths in command line arguments</span></h1>
+pathtype: Validate paths in command line arguments
+===
 
 
 The *pathtype* Python package makes it simple to validate paths in command line (CLI)
