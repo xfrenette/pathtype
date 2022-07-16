@@ -1,8 +1,14 @@
-name: code-check
+name: Code check
 
 on:
-  - workflow_dispatch
-  - push
+  workflow_dispatch:
+  release:
+    types: [published]
+  push:
+    paths:
+      - '**.py'
+      - 'setup.cfg'
+      - 'pyproject.toml'
 
 jobs:
   static-analysis:
