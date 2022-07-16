@@ -424,9 +424,7 @@ class PatternMatches(abc.ABC):
                 message_match = f'glob "{self.glob}"'
 
         if not_found:
-            raise argparse.ArgumentTypeError(
-                f"cannot find {message_match} in {subject}"
-            )
+            raise argparse.ArgumentTypeError(f"{message_match} doesn't match {subject}")
 
     def __eq__(self, other: object):
         if self is other:
